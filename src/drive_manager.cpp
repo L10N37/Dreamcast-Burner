@@ -1,0 +1,747 @@
+#include "drive_manager.h"
+
+#include <windows.h>
+#include <winioctl.h>
+#include <ntddcdrm.h>
+#include <ntddscsi.h>
+
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <cwchar>
+#include <cwctype>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+namespace {
+
+constexpr float kCdOneXKilobytesPerSecond = 176.4F;
+constexpr std::size_t kSenseLength = 32;
+
+class UniqueHandle final {
+public:
+    explicit UniqueHandle(HANDLE handle = INVALID_HANDLE_VALUE) noexcept
+        : handle_(handle) {}
+
+    ~UniqueHandle() {
+        if (IsValid()) {
+            CloseHandle(handle_);
+        }
+    }
+
+    UniqueHandle(const UniqueHandle&) = delete;
+    UniqueHandle& operator=(const UniqueHandle&) = delete;
+
+    UniqueHandle(UniqueHandle&& other) noexcept : handle_(other.handle_) {
+        other.handle_ = INVALID_HANDLE_VALUE;
+    }
+
+    UniqueHandle& operator=(UniqueHandle&& other) noexcept {
+        if (this != &other) {
+            if (IsValid()) {
+                CloseHandle(handle_);
+            }
+            handle_ = other.handle_;
+            other.handle_ = INVALID_HANDLE_VALUE;
+        }
+        return *this;
+    }
+
+    [[nodiscard]] HANDLE Get() const noexcept { return handle_; }
+    [[nodiscard]] bool IsValid() const noexcept {
+        return handle_ != INVALID_HANDLE_VALUE && handle_ != nullptr;
+    }
+
+private:
+    HANDLE handle_;
+};
+
+[[nodiscard]] UniqueHandle OpenDrive(const std::wstring& devicePath) {
+    constexpr DWORD shareMode = FILE_SHARE_READ | FILE_SHARE_WRITE;
+    HANDLE handle = CreateFileW(
+        devicePath.c_str(),
+        GENERIC_READ | GENERIC_WRITE,
+        shareMode,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+
+    if (handle == INVALID_HANDLE_VALUE) {
+        handle = CreateFileW(
+            devicePath.c_str(),
+            GENERIC_READ,
+            shareMode,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+    }
+    if (handle == INVALID_HANDLE_VALUE) {
+        handle = CreateFileW(
+            devicePath.c_str(),
+            0,
+            shareMode,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+    }
+    return UniqueHandle(handle);
+}
+
+[[nodiscard]] std::string TrimAscii(std::string value) {
+    const auto isNotSpace = [](const unsigned char character) {
+        return std::isspace(character) == 0;
+    };
+
+    const auto first = std::find_if(value.begin(), value.end(), isNotSpace);
+    const auto last = std::find_if(value.rbegin(), value.rend(), isNotSpace).base();
+    if (first >= last) {
+        return {};
+    }
+    return std::string(first, last);
+}
+
+[[nodiscard]] std::string ReadDescriptorString(
+    const std::vector<std::uint8_t>& data,
+    const DWORD offset) {
+    if (offset == 0 || offset >= data.size()) {
+        return {};
+    }
+
+    const char* begin = reinterpret_cast<const char*>(data.data() + offset);
+    const std::size_t available = data.size() - offset;
+    const std::size_t length = strnlen_s(begin, available);
+    return TrimAscii(std::string(begin, length));
+}
+
+[[nodiscard]] std::uint16_t ReadBigEndian16(const std::uint8_t* value) noexcept {
+    return static_cast<std::uint16_t>(
+        (static_cast<std::uint16_t>(value[0]) << 8U) |
+        static_cast<std::uint16_t>(value[1]));
+}
+
+[[nodiscard]] std::uint32_t ReadBigEndian32(const std::uint8_t* value) noexcept {
+    return (static_cast<std::uint32_t>(value[0]) << 24U) |
+           (static_cast<std::uint32_t>(value[1]) << 16U) |
+           (static_cast<std::uint32_t>(value[2]) << 8U) |
+           static_cast<std::uint32_t>(value[3]);
+}
+
+[[nodiscard]] std::string BusName(const STORAGE_BUS_TYPE busType) {
+    switch (busType) {
+    case BusTypeScsi: return "SCSI";
+    case BusTypeAtapi: return "ATAPI";
+    case BusTypeAta: return "ATA";
+    case BusType1394: return "FireWire";
+    case BusTypeSsa: return "SSA";
+    case BusTypeFibre: return "Fibre";
+    case BusTypeUsb: return "USB";
+    case BusTypeRAID: return "RAID";
+    case BusTypeSas: return "SAS";
+    case BusTypeSata: return "SATA";
+    case BusTypeSd: return "SD";
+    case BusTypeMmc: return "MMC";
+    case BusTypeVirtual: return "Virtual";
+    case BusTypeFileBackedVirtual: return "Virtual file";
+    case BusTypeSpaces: return "Storage Spaces";
+    case BusTypeNvme: return "NVMe";
+    default: return "Unknown";
+    }
+}
+
+[[nodiscard]] std::string Win32ErrorMessage(const DWORD error) {
+    wchar_t* wideMessage = nullptr;
+    const DWORD length = FormatMessageW(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER |
+            FORMAT_MESSAGE_FROM_SYSTEM |
+            FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        error,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        reinterpret_cast<wchar_t*>(&wideMessage),
+        0,
+        nullptr);
+
+    std::string result;
+    if (length > 0 && wideMessage != nullptr) {
+        const int utf8Length = WideCharToMultiByte(
+            CP_UTF8, 0, wideMessage, static_cast<int>(length),
+            nullptr, 0, nullptr, nullptr);
+        if (utf8Length > 0) {
+            result.resize(static_cast<std::size_t>(utf8Length));
+            WideCharToMultiByte(
+                CP_UTF8, 0, wideMessage, static_cast<int>(length),
+                result.data(), utf8Length, nullptr, nullptr);
+            result = TrimAscii(std::move(result));
+        }
+        LocalFree(wideMessage);
+    }
+    if (result.empty()) {
+        result = "Windows error " + std::to_string(error);
+    }
+    return result;
+}
+
+void QueryIdentity(const HANDLE handle, OpticalDrive& drive) {
+    STORAGE_PROPERTY_QUERY query{};
+    query.PropertyId = StorageDeviceProperty;
+    query.QueryType = PropertyStandardQuery;
+
+    STORAGE_DESCRIPTOR_HEADER header{};
+    DWORD bytesReturned = 0;
+    if (!DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            &query,
+            sizeof(query),
+            &header,
+            sizeof(header),
+            &bytesReturned,
+            nullptr) ||
+        header.Size < sizeof(STORAGE_DEVICE_DESCRIPTOR) ||
+        header.Size > 64U * 1024U) {
+        return;
+    }
+
+    std::vector<std::uint8_t> data(header.Size);
+    if (!DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            &query,
+            sizeof(query),
+            data.data(),
+            static_cast<DWORD>(data.size()),
+            &bytesReturned,
+            nullptr) ||
+        bytesReturned < sizeof(STORAGE_DEVICE_DESCRIPTOR)) {
+        return;
+    }
+
+    data.resize(bytesReturned);
+    const auto* descriptor =
+        reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(data.data());
+    drive.vendor = ReadDescriptorString(data, descriptor->VendorIdOffset);
+    drive.product = ReadDescriptorString(data, descriptor->ProductIdOffset);
+    drive.firmware = ReadDescriptorString(data, descriptor->ProductRevisionOffset);
+    drive.bus = BusName(descriptor->BusType);
+}
+
+struct SptiPacket final {
+    SCSI_PASS_THROUGH_DIRECT request{};
+    ULONG alignment = 0;
+    std::array<UCHAR, kSenseLength> sense{};
+};
+
+[[nodiscard]] bool SendScsiDataIn(
+    const HANDLE handle,
+    const std::uint8_t* cdb,
+    const std::size_t cdbLength,
+    std::uint8_t* output,
+    const std::size_t outputLength,
+    const ULONG timeoutSeconds = 10) {
+    if (cdbLength == 0 || cdbLength > 16 || output == nullptr || outputLength == 0) {
+        return false;
+    }
+
+    SptiPacket packet{};
+    packet.request.Length = sizeof(SCSI_PASS_THROUGH_DIRECT);
+    packet.request.CdbLength = static_cast<UCHAR>(cdbLength);
+    packet.request.SenseInfoLength = static_cast<UCHAR>(packet.sense.size());
+    packet.request.DataIn = SCSI_IOCTL_DATA_IN;
+    packet.request.DataTransferLength = static_cast<ULONG>(outputLength);
+    packet.request.TimeOutValue = timeoutSeconds;
+    packet.request.DataBuffer = output;
+    packet.request.SenseInfoOffset = offsetof(SptiPacket, sense);
+    std::memcpy(packet.request.Cdb, cdb, cdbLength);
+
+    DWORD bytesReturned = 0;
+    const BOOL success = DeviceIoControl(
+        handle,
+        IOCTL_SCSI_PASS_THROUGH_DIRECT,
+        &packet,
+        sizeof(packet),
+        &packet,
+        sizeof(packet),
+        &bytesReturned,
+        nullptr);
+    return success != FALSE && packet.request.ScsiStatus == 0;
+}
+
+void AddWriteSpeed(
+    OpticalDrive& drive,
+    const std::uint32_t kilobytesPerSecond,
+    const bool exact,
+    std::string rotation) {
+    if (kilobytesPerSecond < 100 || kilobytesPerSecond > 100000) {
+        return;
+    }
+    const auto duplicate = std::find_if(
+        drive.writeSpeeds.begin(),
+        drive.writeSpeeds.end(),
+        [kilobytesPerSecond](const WriteSpeed& speed) {
+            return speed.kilobytesPerSecond == kilobytesPerSecond;
+        });
+    if (duplicate != drive.writeSpeeds.end()) {
+        duplicate->exactForWholeMedia = duplicate->exactForWholeMedia || exact;
+        return;
+    }
+
+    WriteSpeed speed;
+    speed.kilobytesPerSecond = kilobytesPerSecond;
+    speed.cdMultiplier = static_cast<float>(kilobytesPerSecond) /
+        kCdOneXKilobytesPerSecond;
+    speed.exactForWholeMedia = exact;
+    speed.rotation = std::move(rotation);
+    drive.writeSpeeds.push_back(std::move(speed));
+}
+
+[[nodiscard]] std::string RotationName(const unsigned value) {
+    switch (value) {
+    case 0: return "CLV/default";
+    case 1: return "CAV";
+    default: return "other";
+    }
+}
+
+[[nodiscard]] bool QueryWindowsWriteSpeeds(
+    const HANDLE handle,
+    OpticalDrive& drive) {
+    CDROM_WRITE_SPEED_REQUEST request{};
+    request.RequestType = CdromWriteSpeedRequest;
+
+    std::array<std::uint8_t, 64U * 1024U> output{};
+    DWORD bytesReturned = 0;
+    if (!DeviceIoControl(
+            handle,
+            IOCTL_CDROM_GET_PERFORMANCE,
+            &request,
+            sizeof(request),
+            output.data(),
+            static_cast<DWORD>(output.size()),
+            &bytesReturned,
+            nullptr)) {
+        return false;
+    }
+
+    constexpr std::size_t headerSize = offsetof(CDROM_PERFORMANCE_HEADER, Data);
+    if (bytesReturned < headerSize) {
+        return false;
+    }
+
+    const auto* header =
+        reinterpret_cast<const CDROM_PERFORMANCE_HEADER*>(output.data());
+    const std::size_t reportedSize =
+        static_cast<std::size_t>(ReadBigEndian32(header->DataLength)) + 4U;
+    const std::size_t usableSize = std::min<std::size_t>(
+        bytesReturned,
+        std::min<std::size_t>(reportedSize, output.size()));
+    if (usableSize < headerSize) {
+        return false;
+    }
+
+    const std::size_t before = drive.writeSpeeds.size();
+    const std::size_t descriptorCount =
+        (usableSize - headerSize) / sizeof(CDROM_WRITE_SPEED_DESCRIPTOR);
+    const auto* descriptors = reinterpret_cast<const CDROM_WRITE_SPEED_DESCRIPTOR*>(
+        output.data() + headerSize);
+    for (std::size_t index = 0; index < descriptorCount; ++index) {
+        const auto& descriptor = descriptors[index];
+        AddWriteSpeed(
+            drive,
+            ReadBigEndian32(descriptor.WriteSpeed),
+            descriptor.Exact != 0,
+            RotationName(static_cast<unsigned>(descriptor.WriteRotationControl)));
+    }
+    return drive.writeSpeeds.size() > before;
+}
+
+[[nodiscard]] bool QueryRawWriteSpeeds(
+    const HANDLE handle,
+    OpticalDrive& drive) {
+    constexpr std::size_t descriptorCount = 100;
+    std::array<std::uint8_t, 8 + descriptorCount * 16> output{};
+    std::array<std::uint8_t, 12> cdb{};
+    cdb[0] = 0xAC; // GET PERFORMANCE
+    cdb[9] = static_cast<std::uint8_t>(descriptorCount);
+    cdb[10] = 0x03; // Write-speed descriptors
+    if (!SendScsiDataIn(handle, cdb.data(), cdb.size(), output.data(), output.size())) {
+        return false;
+    }
+
+    const std::size_t reportedSize =
+        static_cast<std::size_t>(ReadBigEndian32(output.data())) + 4U;
+    const std::size_t usableSize = std::min(reportedSize, output.size());
+    if (usableSize < 8) {
+        return false;
+    }
+
+    const std::size_t before = drive.writeSpeeds.size();
+    const std::size_t count = std::min(
+        descriptorCount,
+        (usableSize - 8U) / 16U);
+    for (std::size_t index = 0; index < count; ++index) {
+        const std::uint8_t* descriptor = output.data() + 8U + index * 16U;
+        const std::uint8_t flags = descriptor[0];
+        AddWriteSpeed(
+            drive,
+            ReadBigEndian32(descriptor + 12),
+            (flags & 0x02U) != 0,
+            RotationName((flags >> 3U) & 0x03U));
+    }
+    return drive.writeSpeeds.size() > before;
+}
+
+[[nodiscard]] bool QueryModePageCapabilities(
+    const HANDLE handle,
+    OpticalDrive& drive) {
+    std::array<std::uint8_t, 512> output{};
+    std::array<std::uint8_t, 10> cdb{};
+    cdb[0] = 0x5A; // MODE SENSE(10)
+    cdb[1] = 0x08; // Disable block descriptors
+    cdb[2] = 0x2A; // CD/DVD capabilities and mechanical status page
+    cdb[7] = static_cast<std::uint8_t>((output.size() >> 8U) & 0xFFU);
+    cdb[8] = static_cast<std::uint8_t>(output.size() & 0xFFU);
+    if (!SendScsiDataIn(handle, cdb.data(), cdb.size(), output.data(), output.size())) {
+        return false;
+    }
+
+    const std::size_t reportedSize =
+        std::min<std::size_t>(ReadBigEndian16(output.data()) + 2U, output.size());
+    if (reportedSize < 10) {
+        return false;
+    }
+    const std::size_t blockDescriptorLength = ReadBigEndian16(output.data() + 6);
+    const std::size_t pageOffset = 8U + blockDescriptorLength;
+    if (pageOffset + 2U > reportedSize) {
+        return false;
+    }
+
+    const std::uint8_t* page = output.data() + pageOffset;
+    if ((page[0] & 0x3FU) != 0x2AU) {
+        return false;
+    }
+    const std::size_t pageSize = std::min<std::size_t>(
+        static_cast<std::size_t>(page[1]) + 2U,
+        reportedSize - pageOffset);
+    if (pageSize < 4) {
+        return false;
+    }
+
+    drive.cdWriteCapabilityKnown = true;
+    drive.canWriteCdR = (page[3] & 0x01U) != 0;
+
+    const std::size_t before = drive.writeSpeeds.size();
+    if (pageSize >= 32) {
+        const std::size_t declaredCount = ReadBigEndian16(page + 30);
+        const std::size_t availableCount = (pageSize - 32U) / 4U;
+        const std::size_t count = std::min(declaredCount, availableCount);
+        for (std::size_t index = 0; index < count; ++index) {
+            const std::uint8_t* descriptor = page + 32U + index * 4U;
+            AddWriteSpeed(
+                drive,
+                ReadBigEndian16(descriptor + 2),
+                false,
+                RotationName(descriptor[1] & 0x03U));
+        }
+    }
+
+    if (drive.writeSpeeds.size() == before && pageSize >= 22) {
+        AddWriteSpeed(drive, ReadBigEndian16(page + 18), false, "drive maximum");
+        const std::uint32_t current = pageSize >= 30
+            ? ReadBigEndian16(page + 28)
+            : ReadBigEndian16(page + 20);
+        AddWriteSpeed(drive, current, false, "current/default");
+    }
+    return drive.writeSpeeds.size() > before;
+}
+
+[[nodiscard]] std::string ProfileName(const std::uint16_t profile) {
+    switch (profile) {
+    case 0x0008: return "CD-ROM";
+    case 0x0009: return "CD-R";
+    case 0x000A: return "CD-RW";
+    case 0x0010: return "DVD-ROM";
+    case 0x0011: return "DVD-R sequential";
+    case 0x0012: return "DVD-RAM";
+    case 0x0013: return "DVD-RW restricted overwrite";
+    case 0x0014: return "DVD-RW sequential";
+    case 0x001A: return "DVD+RW";
+    case 0x001B: return "DVD+R";
+    case 0x0040: return "BD-ROM";
+    case 0x0041: return "BD-R sequential";
+    case 0x0042: return "BD-R random";
+    case 0x0043: return "BD-RE";
+    default: return {};
+    }
+}
+
+void QueryCurrentProfile(const HANDLE handle, OpticalDrive& drive) {
+    std::array<std::uint8_t, 8> output{};
+    std::array<std::uint8_t, 10> cdb{};
+    cdb[0] = 0x46; // GET CONFIGURATION
+    cdb[7] = 0;
+    cdb[8] = static_cast<std::uint8_t>(output.size());
+    if (SendScsiDataIn(handle, cdb.data(), cdb.size(), output.data(), output.size())) {
+        drive.currentProfile = ReadBigEndian16(output.data() + 6);
+    }
+}
+
+void QueryBlankMedia(const HANDLE handle, OpticalDrive& drive) {
+    std::array<std::uint8_t, 32> output{};
+    std::array<std::uint8_t, 10> cdb{};
+    cdb[0] = 0x51; // READ DISC INFORMATION
+    cdb[7] = 0;
+    cdb[8] = static_cast<std::uint8_t>(output.size());
+    if (!SendScsiDataIn(handle, cdb.data(), cdb.size(), output.data(), output.size())) {
+        return;
+    }
+
+    drive.blankMediaKnown = true;
+    drive.blankMedia = (output[2] & 0x03U) == 0;
+}
+
+void QueryMediaAndWriteSpeeds(const HANDLE handle, OpticalDrive& drive) {
+    DWORD bytesReturned = 0;
+    DWORD changeCount = 0;
+    drive.mediaPresent = DeviceIoControl(
+        handle,
+        IOCTL_STORAGE_CHECK_VERIFY,
+        nullptr,
+        0,
+        &changeCount,
+        sizeof(changeCount),
+        &bytesReturned,
+        nullptr) != FALSE;
+
+    QueryCurrentProfile(handle, drive);
+    if (drive.mediaPresent) {
+        QueryBlankMedia(handle, drive);
+    }
+
+    const bool windowsSpeeds = QueryWindowsWriteSpeeds(handle, drive);
+    const bool rawSpeeds = QueryRawWriteSpeeds(handle, drive);
+    const bool modeSpeeds = QueryModePageCapabilities(handle, drive);
+
+    std::sort(
+        drive.writeSpeeds.begin(),
+        drive.writeSpeeds.end(),
+        [](const WriteSpeed& left, const WriteSpeed& right) {
+            return left.kilobytesPerSecond < right.kilobytesPerSecond;
+        });
+
+    if (rawSpeeds) {
+        drive.speedQueryMessage = drive.mediaPresent
+            ? "Direct firmware/MMC speeds for the inserted media."
+            : "Direct firmware/MMC drive speeds; insert a CD-R for media-specific values.";
+    } else if (windowsSpeeds) {
+        drive.speedQueryMessage = drive.mediaPresent
+            ? "Windows MMC speeds for the inserted media."
+            : "Windows MMC drive speeds; insert a CD-R for media-specific values.";
+    } else if (modeSpeeds) {
+        drive.speedQueryMessage =
+            "Drive capability speeds (firmware did not publish media descriptors).";
+    } else if (drive.mediaPresent) {
+        drive.speedQueryMessage =
+            "No discrete speeds reported; Automatic will let cdrecord negotiate.";
+    } else {
+        drive.speedQueryMessage = "Insert a blank CD-R, then press Refresh.";
+    }
+
+    if (!drive.mediaPresent) {
+        drive.mediaDescription = "No disc / not ready";
+        return;
+    }
+
+    const std::string profile = ProfileName(drive.currentProfile);
+    if (!profile.empty()) {
+        drive.mediaDescription = profile;
+    } else {
+        drive.mediaDescription = "Disc present";
+    }
+    if (drive.blankMediaKnown) {
+        drive.mediaDescription += drive.blankMedia ? " - blank" : " - not blank";
+    } else {
+        drive.mediaDescription += " - blank state unconfirmed";
+    }
+}
+
+void QueryCdrecordAddress(const HANDLE handle, OpticalDrive& drive) {
+    SCSI_ADDRESS address{};
+    address.Length = sizeof(address);
+    DWORD bytesReturned = 0;
+    if (DeviceIoControl(
+            handle,
+            IOCTL_SCSI_GET_ADDRESS,
+            nullptr,
+            0,
+            &address,
+            sizeof(address),
+            &bytesReturned,
+            nullptr)) {
+        drive.scsiAddressValid = true;
+        drive.scsiBusKey = static_cast<std::uint16_t>(
+            ((address.PortNumber & 0xFFU) << 8U) | address.PathId);
+        drive.scsiTarget = address.TargetId;
+        drive.scsiLun = address.Lun;
+        return;
+    }
+
+    // cdrtools uses the drive-letter index as a synthetic adapter for USB and
+    // FireWire bridges that return ERROR_NOT_SUPPORTED for this IOCTL.
+    if (GetLastError() == ERROR_NOT_SUPPORTED && !drive.rootPath.empty()) {
+        const unsigned driveIndex =
+            static_cast<unsigned>(std::towupper(drive.rootPath.front()) - L'A');
+        drive.scsiAddressValid = true;
+        drive.scsiBusKey = static_cast<std::uint16_t>((driveIndex + 64U) << 8U);
+        drive.scsiTarget = 0;
+        drive.scsiLun = 0;
+    }
+}
+
+[[nodiscard]] std::vector<std::uint16_t> EnumerateCdrtoolsAdapterKeys() {
+    std::vector<std::uint16_t> keys;
+    std::array<std::uint8_t, 64U * 1024U> inquiry{};
+
+    for (unsigned port = 0; port <= 255; ++port) {
+        const std::wstring path = L"\\\\.\\SCSI" + std::to_wstring(port) + L":";
+        UniqueHandle handle(CreateFileW(
+            path.c_str(),
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr));
+        if (!handle.IsValid()) {
+            break;
+        }
+
+        DWORD bytesReturned = 0;
+        if (!DeviceIoControl(
+                handle.Get(),
+                IOCTL_SCSI_GET_INQUIRY_DATA,
+                nullptr,
+                0,
+                inquiry.data(),
+                static_cast<DWORD>(inquiry.size()),
+                &bytesReturned,
+                nullptr) ||
+            bytesReturned < sizeof(SCSI_ADAPTER_BUS_INFO)) {
+            continue;
+        }
+
+        const auto* adapter =
+            reinterpret_cast<const SCSI_ADAPTER_BUS_INFO*>(inquiry.data());
+        for (unsigned path = 0; path < adapter->NumberOfBuses; ++path) {
+            keys.push_back(static_cast<std::uint16_t>((port << 8U) | path));
+        }
+    }
+    return keys;
+}
+
+void AssignCdrecordAddresses(std::vector<OpticalDrive>& drives) {
+    std::vector<std::uint16_t> keys = EnumerateCdrtoolsAdapterKeys();
+    for (const OpticalDrive& drive : drives) {
+        if (drive.scsiAddressValid) {
+            keys.push_back(drive.scsiBusKey);
+        }
+    }
+    std::sort(keys.begin(), keys.end());
+    keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+
+    for (OpticalDrive& drive : drives) {
+        if (!drive.scsiAddressValid) {
+            continue;
+        }
+        const auto match = std::lower_bound(keys.begin(), keys.end(), drive.scsiBusKey);
+        if (match == keys.end() || *match != drive.scsiBusKey) {
+            continue;
+        }
+        const std::size_t adapter = static_cast<std::size_t>(
+            std::distance(keys.begin(), match));
+        if (adapter > 255) {
+            continue;
+        }
+        drive.cdrecordDevice = "SPTI:" + std::to_string(adapter) + "," +
+            std::to_string(drive.scsiTarget) + "," +
+            std::to_string(drive.scsiLun);
+    }
+}
+
+} // namespace
+
+std::string OpticalDrive::DisplayName() const {
+    std::string letter;
+    if (!rootPath.empty()) {
+        letter.push_back(static_cast<char>(rootPath.front()));
+        letter.push_back(':');
+    }
+
+    std::string identity;
+    if (!vendor.empty()) {
+        identity += vendor;
+    }
+    if (!product.empty()) {
+        if (!identity.empty()) {
+            identity += ' ';
+        }
+        identity += product;
+    }
+    if (identity.empty()) {
+        identity = "Optical drive";
+    }
+    return letter + "  " + identity;
+}
+
+std::vector<OpticalDrive> EnumerateOpticalDrives() {
+    std::vector<OpticalDrive> drives;
+    std::array<wchar_t, 512> paths{};
+    const DWORD pathLength = GetLogicalDriveStringsW(
+        static_cast<DWORD>(paths.size()), paths.data());
+    if (pathLength == 0 || pathLength >= paths.size()) {
+        return drives;
+    }
+
+    for (const wchar_t* path = paths.data(); *path != L'\0';
+         path += std::wcslen(path) + 1) {
+        if (GetDriveTypeW(path) != DRIVE_CDROM || std::wcslen(path) < 2) {
+            continue;
+        }
+
+        OpticalDrive drive;
+        drive.rootPath = path;
+        drive.devicePath = L"\\\\.\\";
+        drive.devicePath.push_back(path[0]);
+        drive.devicePath.push_back(L':');
+
+        UniqueHandle handle = OpenDrive(drive.devicePath);
+        if (handle.IsValid()) {
+            QueryIdentity(handle.Get(), drive);
+            QueryMediaAndWriteSpeeds(handle.Get(), drive);
+            QueryCdrecordAddress(handle.Get(), drive);
+        } else {
+            drive.speedQueryMessage =
+                "Windows could not open this drive: " +
+                Win32ErrorMessage(GetLastError());
+            drive.mediaDescription = "Drive unavailable";
+        }
+        drives.push_back(std::move(drive));
+    }
+
+    std::sort(
+        drives.begin(),
+        drives.end(),
+        [](const OpticalDrive& left, const OpticalDrive& right) {
+            return left.rootPath < right.rootPath;
+        });
+    AssignCdrecordAddresses(drives);
+    return drives;
+}

@@ -1,0 +1,10 @@
+build/
+dist/
+out/
+.vs/
+release/
+*.zip
+*.log
+CMakeCache.txt
+CMakeFiles/
+.vscode/
