@@ -548,19 +548,19 @@ void QueryMediaAndWriteSpeeds(const HANDLE handle, OpticalDrive& drive) {
     if (rawSpeeds) {
         drive.speedQueryMessage = drive.mediaPresent
             ? "Direct firmware/MMC speeds for the inserted media."
-            : "Direct firmware/MMC drive speeds; insert a CD-R for media-specific values.";
+            : "Direct firmware/MMC drive speeds; insert writable media for media-specific values.";
     } else if (windowsSpeeds) {
         drive.speedQueryMessage = drive.mediaPresent
             ? "Windows MMC speeds for the inserted media."
-            : "Windows MMC drive speeds; insert a CD-R for media-specific values.";
+            : "Windows MMC drive speeds; insert writable media for media-specific values.";
     } else if (modeSpeeds) {
         drive.speedQueryMessage =
             "Drive capability speeds (firmware did not publish media descriptors).";
     } else if (drive.mediaPresent) {
         drive.speedQueryMessage =
-            "No discrete speeds reported; Automatic will let cdrecord negotiate.";
+            "No discrete speeds reported; Automatic will let the recording backend negotiate.";
     } else {
-        drive.speedQueryMessage = "Insert a blank CD-R, then press Refresh.";
+        drive.speedQueryMessage = "Insert blank writable media, then press Refresh.";
     }
 
     if (!drive.mediaPresent) {

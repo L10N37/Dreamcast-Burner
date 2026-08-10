@@ -389,6 +389,8 @@ struct ProcessResult final {
         return "PlayStation 2 DVD";
     case BurnTarget::Saturn:
         return "Sega Saturn";
+    case BurnTarget::Xbox360:
+        return "Xbox 360";
     default:
         return "Unknown";
     }
@@ -538,7 +540,7 @@ struct ProcessResult final {
 
     if (request.target == BurnTarget::PlayStation2Dvd) {
         if (extension != ".iso") {
-            errorMessage = "PlayStation 2 DVD currently supports .iso images.";
+            errorMessage = "PlayStation 2 DVD supports .iso images.";
             return false;
         }
 
@@ -553,17 +555,53 @@ struct ProcessResult final {
             return false;
         }
 
-        // Standard single-layer DVD-R nominal user capacity.
         constexpr std::uintmax_t kDvdRSingleLayerBytes = 4707319808ULL;
-        if (size > kDvdRSingleLayerBytes) {
+        constexpr std::uintmax_t kDvdPlusRDualLayerNominalBytes = 8547991552ULL;
+        if (size > kDvdPlusRDualLayerNominalBytes) {
             errorMessage =
-                "This ISO is larger than a single-layer DVD-R. "
-                "DVD9 / dual-layer support will be enabled as a separate tested path.";
+                "This PS2 ISO is larger than nominal dual-layer DVD capacity.";
             return false;
         }
 
         cueTrackCount = 1;
-        layout = "PlayStation 2 DVD ISO - single-layer DVD-R (growisofs)";
+        layout = size > kDvdRSingleLayerBytes
+            ? "PlayStation 2 DVD ISO - dual-layer DVD (growisofs)"
+            : "PlayStation 2 DVD ISO - single-layer DVD (growisofs)";
+        return true;
+    }
+
+    if (request.target == BurnTarget::Xbox360) {
+        if (extension != ".iso") {
+            errorMessage = "Xbox 360 burning currently supports .iso images.";
+            return false;
+        }
+
+        const std::uintmax_t size = fs::file_size(imagePath, fileError);
+        if (fileError || size == 0 || (size % 2048ULL) != 0ULL) {
+            errorMessage =
+                "The Xbox 360 ISO is empty or is not aligned to 2048-byte sectors.";
+            return false;
+        }
+
+        constexpr std::uintmax_t kDvdPlusRDualLayerNominalBytes = 8547991552ULL;
+        constexpr std::uintmax_t kXgd3FullImageBytes = 8738846720ULL;
+        const std::uintmax_t maximum =
+            request.xbox360DiscType == Xbox360DiscType::Xgd3
+                ? kXgd3FullImageBytes
+                : kDvdPlusRDualLayerNominalBytes;
+        if (size > maximum) {
+            errorMessage =
+                request.xbox360DiscType == Xbox360DiscType::Xgd3
+                    ? "This XGD3 ISO is larger than the supported full XGD3 image size."
+                    : "This XGD2 ISO is larger than nominal DVD+R DL capacity.";
+            return false;
+        }
+
+        cueTrackCount = 1;
+        layout =
+            request.xbox360DiscType == Xbox360DiscType::Xgd3
+                ? "Xbox 360 XGD3 ISO - DVD+R DL / BurnerMAX"
+                : "Xbox 360 XGD2 ISO - DVD+R DL";
         return true;
     }
 
@@ -677,13 +715,102 @@ void BurnEngine::AppendLog(const std::string& text) {
     if (text.empty()) {
         return;
     }
-    if (state_.log.size() + text.size() > kMaximumLogBytes) {
-        const std::size_t remove = state_.log.size() + text.size() - kMaximumLogBytes;
-        state_.log.erase(0, std::min(remove, state_.log.size()));
-    }
-    state_.log += text;
-}
 
+    state_.log += text;
+
+    // cdrtools' Windows/Cygwin build prints a number of privilege warnings
+    // even when SPTI access is working normally. They are expected noise in
+    // Retro Burner and would otherwise look like fatal errors to users.
+    static constexpr std::array<std::string_view, 11> benignCdrecordLines = {
+        "cdrecord: Insufficient 'file read' privileges.",
+        "cdrecord: Insufficient 'file write' privileges.",
+        "cdrecord: Insufficient 'device' privileges.",
+        "cdrecord: Insufficient 'memlock' privileges.",
+        "cdrecord: Insufficient 'priocntl' privileges.",
+        "cdrecord: Insufficient 'network' privileges.",
+        "cdrecord: Warning: using inofficial version of libscg",
+        "cdrecord: Warning: Cannot read drive buffer.",
+        "cdrecord: Warning: The DMA speed test has been skipped.",
+        "cdrecord: WARNING: Drive returns wrong startsec (0) using -150",
+        "No Media Present or Unknown Capacity",
+    };
+
+    const auto removeCompleteLineContaining =
+        [this](const std::string_view marker) {
+            std::size_t searchFrom = 0;
+            while (true) {
+                const std::size_t hit =
+                    state_.log.find(marker, searchFrom);
+                if (hit == std::string::npos) {
+                    break;
+                }
+
+                const std::size_t lineEnd =
+                    state_.log.find('\n', hit);
+                if (lineEnd == std::string::npos) {
+                    // The child process may have split this line across pipe
+                    // reads. Leave it until the next chunk completes it.
+                    break;
+                }
+
+                const std::size_t previousNewline =
+                    hit == 0
+                        ? std::string::npos
+                        : state_.log.rfind('\n', hit - 1);
+                const std::size_t lineStart =
+                    previousNewline == std::string::npos
+                        ? 0
+                        : previousNewline + 1;
+                state_.log.erase(
+                    lineStart,
+                    lineEnd - lineStart + 1);
+                searchFrom = lineStart;
+            }
+        };
+
+    for (const std::string_view marker : benignCdrecordLines) {
+        removeCompleteLineContaining(marker);
+    }
+
+    // cdrecord animates its ten-second countdown with terminal backspaces.
+    // Replace that terminal-only line with one clean GUI-friendly message.
+    constexpr std::string_view countdownMarker =
+        "Last chance to quit, starting real write in";
+    while (true) {
+        const std::size_t hit =
+            state_.log.find(countdownMarker);
+        if (hit == std::string::npos) {
+            break;
+        }
+        const std::size_t lineEnd =
+            state_.log.find('\n', hit);
+        if (lineEnd == std::string::npos) {
+            break;
+        }
+        const std::size_t previousNewline =
+            hit == 0
+                ? std::string::npos
+                : state_.log.rfind('\n', hit - 1);
+        const std::size_t lineStart =
+            previousNewline == std::string::npos
+                ? 0
+                : previousNewline + 1;
+        state_.log.replace(
+            lineStart,
+            lineEnd - lineStart + 1,
+            "Starting burn...\r\n");
+    }
+
+    state_.log.erase(
+        std::remove(state_.log.begin(), state_.log.end(), '\b'),
+        state_.log.end());
+
+    if (state_.log.size() > kMaximumLogBytes) {
+        state_.log.erase(
+            0,
+            state_.log.size() - kMaximumLogBytes);
+    }
+}
 void BurnEngine::SetFailure(std::string message) {
     AppendLog("\r\nERROR: " + message + "\r\n");
     std::lock_guard lock(mutex_);
@@ -740,7 +867,16 @@ void BurnEngine::RunStandardImage(
         return;
     }
 
-    if (request.target == BurnTarget::PlayStation2Dvd) {
+    const bool dvdTarget =
+        request.target == BurnTarget::PlayStation2Dvd ||
+        request.target == BurnTarget::Xbox360;
+
+    if (request.simulate && !dvdTarget) {
+        SetFailure("Dry run is available only for DVD targets.");
+        return;
+    }
+
+    if (dvdTarget) {
         if (request.opticalDriveRoot.empty()) {
             SetFailure("The selected Windows DVD drive has no drive letter.");
             return;
@@ -750,23 +886,25 @@ void BurnEngine::RunStandardImage(
         const fs::path dvdMediaInfo(dvdMediaInfoPath);
         if (!fs::is_regular_file(growisofs) ||
             !fs::is_regular_file(dvdMediaInfo)) {
-            SetFailure("The embedded PS2 DVD backend could not be prepared.");
+            SetFailure("The embedded DVD recording backend could not be prepared.");
             return;
         }
 
-        const auto append =
-            [this](const std::string& text) {
+        std::string mediaInfoOutput;
+        const auto appendMediaInfo =
+            [this, &mediaInfoOutput](const std::string& text) {
+                mediaInfoOutput += text;
                 AppendLog(text);
             };
         const auto ignoreLine =
             [](std::string_view) {};
 
-        AppendLog("\r\nPS2 DVD media preflight (dvd+rw-mediainfo)\r\n");
+        AppendLog("\r\nDVD media preflight (dvd+rw-mediainfo)\r\n");
         const ProcessResult mediaInfo = RunHiddenProcess(
             dvdMediaInfo,
             {request.opticalDriveRoot},
             workingDirectory,
-            append,
+            appendMediaInfo,
             ignoreLine);
 
         if (!mediaInfo.started) {
@@ -779,6 +917,108 @@ void BurnEngine::RunStandardImage(
                 "No image data was written.");
             return;
         }
+
+        static const std::regex mountedProfilePattern(
+            R"(Mounted Media:\s+([0-9A-Fa-f]+)h,)",
+            std::regex::icase);
+        static const std::regex blankDiscPattern(
+            R"(Disc status:\s+blank)",
+            std::regex::icase);
+        static const std::regex freeBlocksPattern(
+            R"(Free Blocks:\s+([0-9]+)\*2KB)",
+            std::regex::icase);
+
+        std::smatch mediaMatch;
+        unsigned mediaProfile = 0;
+        if (std::regex_search(
+                mediaInfoOutput,
+                mediaMatch,
+                mountedProfilePattern)) {
+            mediaProfile = static_cast<unsigned>(
+                std::stoul(mediaMatch[1].str(), nullptr, 16));
+        }
+
+        if (!std::regex_search(mediaInfoOutput, blankDiscPattern)) {
+            SetFailure(
+                "The selected DVD media is not positively reported as blank. "
+                "No image data was written.");
+            return;
+        }
+
+        std::error_code sizeError;
+        const std::uintmax_t imageBytes =
+            fs::file_size(imagePath, sizeError);
+        if (sizeError || imageBytes == 0) {
+            SetFailure("Could not read the selected image size.");
+            return;
+        }
+
+        constexpr std::uintmax_t kDvdSingleLayerBytes = 4707319808ULL;
+        const bool ps2NeedsDualLayer =
+            request.target == BurnTarget::PlayStation2Dvd &&
+            imageBytes > kDvdSingleLayerBytes;
+
+        const bool isSingleLayerRecordable =
+            mediaProfile == 0x11 || // DVD-R
+            mediaProfile == 0x1B;   // DVD+R
+        const bool isDualLayerRecordable =
+            mediaProfile == 0x15 || // DVD-R DL sequential
+            mediaProfile == 0x16 || // DVD-R DL layer jump
+            mediaProfile == 0x2B;   // DVD+R DL
+
+        if (request.target == BurnTarget::Xbox360) {
+            if (mediaProfile != 0x2B) {
+                SetFailure(
+                    "Xbox 360 backups require blank DVD+R DL media. "
+                    "DVD-R DL and single-layer media are not accepted.");
+                return;
+            }
+        } else if (ps2NeedsDualLayer) {
+            if (!isDualLayerRecordable) {
+                SetFailure(
+                    "This PS2 ISO requires dual-layer media. Insert a blank "
+                    "DVD-R DL or DVD+R DL and retry.");
+                return;
+            }
+        } else if (!isSingleLayerRecordable && !isDualLayerRecordable) {
+            SetFailure(
+                "PlayStation 2 DVD burning requires blank DVD-R, DVD+R, "
+                "DVD-R DL or DVD+R DL media.");
+            return;
+        }
+
+        if (std::regex_search(
+                mediaInfoOutput,
+                mediaMatch,
+                freeBlocksPattern)) {
+            const std::uintmax_t freeBlocks =
+                std::stoull(mediaMatch[1].str());
+            const std::uintmax_t reportedCapacity =
+                freeBlocks * 2048ULL;
+            if (imageBytes > reportedCapacity) {
+                if (request.target == BurnTarget::Xbox360 &&
+                    request.xbox360DiscType == Xbox360DiscType::Xgd3) {
+                    SetFailure(
+                        "The XGD3 image is larger than the capacity reported by this "
+                        "drive/media combination. XGD3 requires a BurnerMAX-compatible "
+                        "DVD+R DL writer/firmware with expanded writable capacity.");
+                } else {
+                    SetFailure(
+                        "The selected image does not fit the writable capacity reported "
+                        "for the inserted DVD.");
+                }
+                return;
+            }
+        }
+
+        const bool xbox = request.target == BurnTarget::Xbox360;
+        const bool xgd3 =
+            xbox &&
+            request.xbox360DiscType == Xbox360DiscType::Xgd3;
+        const std::string targetDescription =
+            xbox
+                ? (xgd3 ? "Xbox 360 XGD3" : "Xbox 360 XGD2")
+                : "PlayStation 2 DVD";
 
         {
             std::lock_guard lock(mutex_);
@@ -793,13 +1033,19 @@ void BurnEngine::RunStandardImage(
             state_.actualSpeed.clear();
             state_.remainingTime.clear();
             state_.status = request.simulate
-                ? "PS2 DVD dry run - no write..."
-                : "Writing PlayStation 2 DVD-R...";
+                ? targetDescription + " dry run - no write..."
+                : "Writing " + targetDescription + "...";
         }
 
         std::vector<std::wstring> arguments;
         if (request.simulate) {
             arguments.emplace_back(L"-dry-run");
+        }
+        if (xbox) {
+            arguments.emplace_back(L"-use-the-force-luke=dao");
+            arguments.push_back(
+                L"-use-the-force-luke=break:" +
+                std::to_wstring(xgd3 ? 2133520 : 1913760));
         }
         arguments.emplace_back(L"-dvd-compat");
         if (request.requestedSpeedX > 0) {
@@ -812,15 +1058,15 @@ void BurnEngine::RunStandardImage(
 
         AppendLog(
             request.simulate
-                ? "\r\nPS2 DVD DRY RUN - growisofs -dry-run\r\n"
-                : "\r\nPS2 DVD WRITE - growisofs\r\n");
+                ? "\r\nDVD DRY RUN - growisofs -dry-run\r\n"
+                : "\r\nDVD WRITE - growisofs\r\n");
 
         static const std::regex growProgressPattern(
             R"(\(\s*([0-9]+(?:\.[0-9]+)?)%\)\s+@([0-9]+(?:\.[0-9]+)?)x,\s+remaining\s+([0-9?:]+)\s+RBU\s+([0-9]+(?:\.[0-9]+)?)%\s+UBU\s+([0-9]+(?:\.[0-9]+)?)%)",
             std::regex::icase);
 
         const OutputCallback parseGrowisofs =
-            [this](const std::string_view lineView) {
+            [this, targetDescription](const std::string_view lineView) {
                 const std::string line(lineView);
                 std::smatch match;
                 if (!std::regex_search(
@@ -855,11 +1101,15 @@ void BurnEngine::RunStandardImage(
                 state_.driveBufferPercent =
                     std::clamp(ubu, 0, 100);
                 state_.status =
-                    "Writing PlayStation 2 DVD-R - " +
+                    "Writing " + targetDescription + " - " +
                     std::to_string(
-                        static_cast<int>(
-                            std::lround(percent))) +
+                        static_cast<int>(std::lround(percent))) +
                     "%";
+            };
+
+        const auto append =
+            [this](const std::string& text) {
+                AppendLog(text);
             };
 
         const ProcessResult result = RunHiddenProcess(
@@ -876,8 +1126,10 @@ void BurnEngine::RunStandardImage(
         if (result.exitCode != 0) {
             SetFailure(
                 request.simulate
-                    ? "PS2 DVD dry run failed. No image data was intentionally written."
-                    : "PlayStation 2 DVD write failed. The disc may be incomplete; check the burn log.");
+                    ? targetDescription +
+                          " dry run failed. No image data was intentionally written."
+                    : targetDescription +
+                          " write failed. The disc may be incomplete; check the burn log.");
             return;
         }
 
@@ -888,7 +1140,8 @@ void BurnEngine::RunStandardImage(
             state_.writing = false;
             state_.progress = 0.0F;
             state_.status =
-                "PS2 DVD dry run completed successfully. No image data was written.";
+                targetDescription +
+                " dry run completed successfully. No image data was written.";
             return;
         }
 
@@ -909,15 +1162,8 @@ void BurnEngine::RunStandardImage(
         state_.session = 1;
         state_.remainingTime = "00:00";
         state_.status = ejected
-            ? "âœ“ Burn complete! Disc ejected."
-            : "âœ“ Burn complete!";
-        return;
-    }
-
-    if (request.simulate &&
-        request.target != BurnTarget::PlayStation2Dvd) {
-        SetFailure(
-            "Simulation is currently enabled only for the PS2 DVD-R validation path.");
+            ? "Burn complete! Disc ejected."
+            : "Burn complete!";
         return;
     }
 
@@ -961,18 +1207,16 @@ void BurnEngine::RunStandardImage(
         state_.writing = true;
         state_.session = 1;
         state_.bufferPercent = -1;
+        state_.ringBufferPercent = -1;
+        state_.driveBufferPercent = -1;
+        state_.remainingTime.clear();
         state_.actualSpeed.clear();
         state_.progress = 0.0F;
         state_.status =
-            request.simulate
-                ? "Simulating PS2 DVD-R write - laser off..."
-                : "Writing " + std::string(BurnTargetName(request.target)) + " disc...";
+            "Writing " + std::string(BurnTargetName(request.target)) + " disc...";
     }
 
-    AppendLog(
-        request.simulate
-            ? "\r\nSIMULATED WRITE - cdrecord -dummy\r\n"
-            : "\r\nWriting disc\r\n");
+    AppendLog("\r\nWriting disc\r\n");
 
     std::vector<std::wstring> arguments;
     arguments.push_back(
@@ -981,17 +1225,10 @@ void BurnEngine::RunStandardImage(
             request.cdrecordDevice.end()));
     arguments.emplace_back(L"-v");
 
-    // Leave DVD-R speed to the drive/media for the first validation.
-    // Existing CD speed selection remains available for CD targets.
-    if (request.requestedSpeedX > 0 &&
-        request.target != BurnTarget::PlayStation2Dvd) {
+    if (request.requestedSpeedX > 0) {
         arguments.push_back(
             L"-speed=" +
             std::to_wstring(request.requestedSpeedX));
-    }
-
-    if (request.simulate) {
-        arguments.emplace_back(L"-dummy");
     }
 
     arguments.emplace_back(L"-eject");
@@ -1020,9 +1257,10 @@ void BurnEngine::RunStandardImage(
         std::regex::icase);
 
     const int totalTracks = std::max(1, cueTrackCount);
+    const std::string targetName = BurnTargetName(request.target);
 
     const OutputCallback parseLine =
-        [this, totalTracks](const std::string_view lineView) {
+        [this, totalTracks, targetName](const std::string_view lineView) {
             const std::string line(lineView);
             std::smatch match;
             float progress = -1.0F;
@@ -1091,10 +1329,16 @@ void BurnEngine::RunStandardImage(
                         std::max(
                             state_.progress,
                             progress);
+                    state_.status =
+                        "Writing " + targetName + " - " +
+                        std::to_string(
+                            static_cast<int>(std::lround(
+                                state_.progress * 100.0F))) +
+                        "%";
                 }
                 if (bufferPercent >= 0) {
                     state_.bufferPercent =
-                        bufferPercent;
+                        std::clamp(bufferPercent, 0, 100);
                 }
                 if (!speed.empty()) {
                     state_.actualSpeed =
@@ -1116,35 +1360,21 @@ void BurnEngine::RunStandardImage(
     }
 
     if (result.exitCode != 0) {
-        if (request.simulate) {
-            SetFailure(
-                "DVD-R simulation failed or this drive/media combination does not support dummy writes. "
-                "No image data was intentionally written.");
-        } else {
-            SetFailure(
-                std::string(BurnTargetName(request.target)) +
-                " write failed. The disc may be incomplete; check the burn log.");
-        }
+        SetFailure(
+            std::string(BurnTargetName(request.target)) +
+            " write failed. The disc may be incomplete; check the burn log.");
         return;
     }
+
+    PlayBurnCompleteSound();
 
     std::lock_guard lock(mutex_);
     state_.busy = false;
     state_.writing = false;
-
-    if (request.simulate) {
-        state_.stage = BurnStage::Ready;
-        state_.progress = 0.0F;
-        state_.status =
-            "PS2 DVD-R simulation completed successfully. "
-            "No image data was written. Reinsert the disc before the real burn.";
-    } else {
-        state_.stage = BurnStage::Complete;
-        state_.progress = 1.0F;
-        state_.session = 1;
-        state_.status =
-            "100% - Burn complete. Disc ejected.";
-    }
+    state_.stage = BurnStage::Complete;
+    state_.progress = 1.0F;
+    state_.session = 1;
+    state_.status = "Burn complete! Disc ejected.";
 }
 void BurnEngine::Run(BurnRequest request) {
     const EmbeddedToolPaths& tools = GetEmbeddedToolPaths();
@@ -1401,11 +1631,13 @@ void BurnEngine::Run(BurnRequest request) {
     }
 
     AppendLog("\r\nBurn complete.\r\n");
+    PlayBurnCompleteSound();
+
     std::lock_guard lock(mutex_);
     state_.stage = BurnStage::Complete;
     state_.busy = false;
     state_.writing = false;
     state_.progress = 1.0F;
     state_.session = 2;
-    state_.status = "100% - Burn complete. Disc ejected.";
+    state_.status = "Burn complete! Disc ejected.";
 }

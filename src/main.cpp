@@ -46,11 +46,14 @@ enum class ConsoleProfile : int {
     PlayStation2Cd,
     PlayStation2Dvd,
     Saturn,
+    Xbox360,
     Count,
 };
 
 constexpr int kConsoleProfileCount =
     static_cast<int>(ConsoleProfile::Count);
+
+constexpr std::uint64_t kDvdSingleLayerBytes = 4707319808ULL;
 
 [[nodiscard]] const char* ConsoleName(const ConsoleProfile profile) {
     switch (profile) {
@@ -64,6 +67,8 @@ constexpr int kConsoleProfileCount =
         return "PlayStation 2 - DVD";
     case ConsoleProfile::Saturn:
         return "Sega Saturn";
+    case ConsoleProfile::Xbox360:
+        return "Xbox 360";
     default:
         return "Unknown";
     }
@@ -78,9 +83,11 @@ constexpr int kConsoleProfileCount =
     case ConsoleProfile::PlayStation2Cd:
         return "native x64  |  CUE/ISO to CD-R";
     case ConsoleProfile::PlayStation2Dvd:
-        return "native x64  |  ISO to DVD-R";
+        return "native x64  |  ISO to DVD / DVD-DL";
     case ConsoleProfile::Saturn:
         return "native x64  |  BIN/CUE to CD-R";
+    case ConsoleProfile::Xbox360:
+        return "native x64  |  XGD2/XGD3 ISO to DVD+R DL";
     default:
         return "native x64";
     }
@@ -99,6 +106,8 @@ constexpr int kConsoleProfileCount =
         return BurnTarget::PlayStation2Dvd;
     case ConsoleProfile::Saturn:
         return BurnTarget::Saturn;
+    case ConsoleProfile::Xbox360:
+        return BurnTarget::Xbox360;
     default:
         return BurnTarget::Dreamcast;
     }
@@ -106,8 +115,15 @@ constexpr int kConsoleProfileCount =
 
 [[nodiscard]] bool IsDvdProfile(
     const ConsoleProfile profile) {
-    return profile ==
-        ConsoleProfile::PlayStation2Dvd;
+    return profile == ConsoleProfile::PlayStation2Dvd ||
+           profile == ConsoleProfile::Xbox360;
+}
+
+[[nodiscard]] const char* Xbox360DiscTypeName(
+    const Xbox360DiscType type) {
+    return type == Xbox360DiscType::Xgd3
+        ? "XGD3 - BurnerMAX"
+        : "XGD2 / standard Xbox 360";
 }
 
 [[nodiscard]] const char* ImageHint(
@@ -120,9 +136,11 @@ constexpr int kConsoleProfileCount =
     case ConsoleProfile::PlayStation2Cd:
         return "Drop a .cue or .iso here or choose Browse";
     case ConsoleProfile::PlayStation2Dvd:
-        return "Drop a single-layer PS2 DVD .iso here or choose Browse";
+        return "Drop a PS2 DVD .iso here or choose Browse";
     case ConsoleProfile::Saturn:
         return "Drop the game's .cue here or choose Browse";
+    case ConsoleProfile::Xbox360:
+        return "Drop an Xbox 360 .iso here or choose Browse";
     default:
         return "Choose a disc image";
     }
@@ -130,9 +148,14 @@ constexpr int kConsoleProfileCount =
 
 [[nodiscard]] const char* ExpectedMediaName(
     const ConsoleProfile profile) {
-    return IsDvdProfile(profile)
-        ? "blank DVD-R"
-        : "blank CD-R";
+    switch (profile) {
+    case ConsoleProfile::PlayStation2Dvd:
+        return "blank DVD-R / DVD+R or dual-layer DVD";
+    case ConsoleProfile::Xbox360:
+        return "blank DVD+R DL";
+    default:
+        return "blank CD-R";
+    }
 }
 struct AppState final {
     std::wstring selectedCdi;
@@ -140,7 +163,8 @@ struct AppState final {
     int selectedDrive = 0;
     int selectedSpeed = 0; // 0 means Automatic.
     ConsoleProfile selectedConsole = ConsoleProfile::Dreamcast;
-    std::string status = "Choose a CDI image and insert a blank CD-R.";
+    Xbox360DiscType xbox360DiscType = Xbox360DiscType::Xgd2;
+    std::string status = "Choose a disc image and insert compatible blank media.";
     BurnStage lastBurnStage = BurnStage::Idle;
 };
 
@@ -194,6 +218,7 @@ struct AppState final {
         return extension == L".cue" ||
                extension == L".iso";
     case ConsoleProfile::PlayStation2Dvd:
+    case ConsoleProfile::Xbox360:
         return extension == L".iso";
     default:
         return false;
@@ -204,6 +229,26 @@ struct AppState final {
     const DWORD attributes = GetFileAttributesW(path.c_str());
     return attributes != INVALID_FILE_ATTRIBUTES &&
         (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+[[nodiscard]] std::uint64_t FileSizeBytes(const std::wstring& path) {
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!GetFileAttributesExW(
+            path.c_str(),
+            GetFileExInfoStandard,
+            &data)) {
+        return 0;
+    }
+    ULARGE_INTEGER size{};
+    size.HighPart = data.nFileSizeHigh;
+    size.LowPart = data.nFileSizeLow;
+    return size.QuadPart;
+}
+
+[[nodiscard]] bool SelectedPs2ImageNeedsDualLayer(
+    const AppState& state) {
+    return state.selectedConsole == ConsoleProfile::PlayStation2Dvd &&
+           FileSizeBytes(state.selectedCdi) > kDvdSingleLayerBytes;
 }
 
 void SelectCdi(
@@ -292,6 +337,11 @@ void ShowCdiPicker(
         {L"All files", L"*.*"},
     };
 
+    static const COMDLG_FILTERSPEC xbox360Filters[] = {
+        {L"Xbox 360 ISO images", L"*.iso"},
+        {L"All files", L"*.*"},
+    };
+
     switch (state.selectedConsole) {
     case ConsoleProfile::Dreamcast:
         dialog->SetFileTypes(
@@ -341,6 +391,16 @@ void ShowCdiPicker(
             saturnFilters);
         dialog->SetTitle(
             L"Choose a Sega Saturn CUE sheet");
+        break;
+
+    case ConsoleProfile::Xbox360:
+        dialog->SetFileTypes(
+            static_cast<UINT>(
+                std::size(
+                    xbox360Filters)),
+            xbox360Filters);
+        dialog->SetTitle(
+            L"Choose an Xbox 360 ISO image");
         break;
 
     default:
@@ -494,6 +554,38 @@ void DrawRotatedImage(
         ImVec2(0.0F, 1.0F));
 }
 
+void DrawCenteredSuccessText(const float availableWidth) {
+    constexpr const char* text = "Burn complete!";
+    constexpr float tickSize = 13.0F;
+    constexpr float gap = 7.0F;
+
+    const float textWidth = ImGui::CalcTextSize(text).x;
+    const float totalWidth = tickSize + gap + textWidth;
+    ImGui::SetCursorPosX(
+        ImGui::GetCursorPosX() +
+        std::max(0.0F, (availableWidth - totalWidth) * 0.5F));
+
+    const ImVec2 tickTopLeft = ImGui::GetCursorScreenPos();
+    const float lineHeight = ImGui::GetTextLineHeight();
+    const float centerY = tickTopLeft.y + lineHeight * 0.50F;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImU32 tickColor = ImGui::GetColorU32(ImGuiCol_Text);
+    drawList->AddLine(
+        ImVec2(tickTopLeft.x + 1.0F, centerY),
+        ImVec2(tickTopLeft.x + 5.0F, centerY + 4.0F),
+        tickColor,
+        2.0F);
+    drawList->AddLine(
+        ImVec2(tickTopLeft.x + 5.0F, centerY + 4.0F),
+        ImVec2(tickTopLeft.x + 12.0F, centerY - 5.0F),
+        tickColor,
+        2.0F);
+
+    ImGui::Dummy(ImVec2(tickSize, lineHeight));
+    ImGui::SameLine(0.0F, gap);
+    ImGui::TextUnformatted(text);
+}
+
 void ConfigureImGuiStyle() {
     ImGuiStyle& style = ImGui::GetStyle();
     style.WindowPadding = ImVec2(24.0F, 20.0F);
@@ -546,7 +638,13 @@ void DrawDriveDetails(const OpticalDrive& drive) {
     ImGui::SameLine(110.0F);
     ImVec4 mediaColor(1.00F, 0.62F, 0.24F, 1.00F);
     if (drive.mediaPresent && drive.blankMediaKnown && drive.blankMedia &&
-        (drive.currentProfile == 0 || drive.currentProfile == 0x0009 || drive.currentProfile == 0x0011)) {
+        (drive.currentProfile == 0 ||
+         drive.currentProfile == 0x0009 ||
+         drive.currentProfile == 0x0011 ||
+         drive.currentProfile == 0x0015 ||
+         drive.currentProfile == 0x0016 ||
+         drive.currentProfile == 0x001B ||
+         drive.currentProfile == 0x002B)) {
         mediaColor = ImVec4(0.45F, 0.95F, 0.50F, 1.00F);
     } else if (drive.mediaPresent && drive.blankMediaKnown && !drive.blankMedia) {
         mediaColor = ImVec4(1.00F, 0.32F, 0.24F, 1.00F);
@@ -575,8 +673,7 @@ void DrawDriveDetails(const OpticalDrive& drive) {
             static_cast<std::size_t>(
                 state.selectedSpeed - 1)];
 
-    if (state.selectedConsole ==
-        ConsoleProfile::PlayStation2Dvd) {
+    if (IsDvdProfile(state.selectedConsole)) {
         return std::max(
             1,
             static_cast<int>(
@@ -670,68 +767,87 @@ void DrawApp(
                 ImVec2(artSize, 23.0F),
                 progressLabel);
 
-            std::string burnDetails;
             if (burn.stage == BurnStage::Complete) {
-                burnDetails = "âœ“ Burn complete!";
-            } else if (burn.writing) {
-                if (state.selectedConsole ==
-                    ConsoleProfile::PlayStation2Dvd) {
-                    if (!burn.actualSpeed.empty()) {
+                DrawCenteredSuccessText(artSize);
+            } else {
+                std::string burnDetails;
+                if (burn.writing) {
+                    if (IsDvdProfile(state.selectedConsole)) {
+                        if (!burn.actualSpeed.empty()) {
+                            burnDetails = burn.actualSpeed;
+                        }
+                        if (!burn.remainingTime.empty()) {
+                            if (!burnDetails.empty()) {
+                                burnDetails += "  |  ";
+                            }
+                            burnDetails +=
+                                "remaining " +
+                                burn.remainingTime;
+                        }
+                        if (burn.ringBufferPercent >= 0) {
+                            if (!burnDetails.empty()) {
+                                burnDetails += "  |  ";
+                            }
+                            burnDetails +=
+                                "Read Buffer " +
+                                std::to_string(
+                                    burn.ringBufferPercent) +
+                                "%";
+                        }
+                        if (burn.driveBufferPercent >= 0) {
+                            if (!burnDetails.empty()) {
+                                burnDetails += "  |  ";
+                            }
+                            burnDetails +=
+                                "Drive Buffer " +
+                                std::to_string(
+                                    burn.driveBufferPercent) +
+                                "%";
+                        }
+                    } else if (state.selectedConsole ==
+                               ConsoleProfile::Dreamcast) {
+                        burnDetails =
+                            "Session " +
+                            std::to_string(burn.session) +
+                            " of 2";
+                        if (!burn.actualSpeed.empty()) {
+                            burnDetails +=
+                                "  |  " +
+                                burn.actualSpeed;
+                        }
+                        if (burn.bufferPercent >= 0) {
+                            burnDetails +=
+                                "  |  buffer " +
+                                std::to_string(
+                                    burn.bufferPercent) +
+                                "%";
+                        }
+                    } else {
                         burnDetails = burn.actualSpeed;
-                    }
-                    if (!burn.remainingTime.empty()) {
-                        if (!burnDetails.empty()) {
-                            burnDetails += "  |  ";
+                        if (burn.bufferPercent >= 0) {
+                            if (!burnDetails.empty()) {
+                                burnDetails += "  |  ";
+                            }
+                            burnDetails +=
+                                "buffer " +
+                                std::to_string(
+                                    burn.bufferPercent) +
+                                "%";
                         }
-                        burnDetails +=
-                            "remaining " +
-                            burn.remainingTime;
-                    }
-                    if (burn.ringBufferPercent >= 0) {
-                        if (!burnDetails.empty()) {
-                            burnDetails += "  |  ";
-                        }
-                        burnDetails +=
-                            "Read Buffer " +
-                            std::to_string(
-                                burn.ringBufferPercent) +
-                            "%";
-                    }
-                    if (burn.driveBufferPercent >= 0) {
-                        if (!burnDetails.empty()) {
-                            burnDetails += "  |  ";
-                        }
-                        burnDetails +=
-                            "Drive Buffer " +
-                            std::to_string(
-                                burn.driveBufferPercent) +
-                            "%";
                     }
                 } else {
-                    burnDetails =
-                        "Session " +
-                        std::to_string(burn.session) +
-                        " of 2";
-                    if (!burn.actualSpeed.empty()) {
-                        burnDetails +=
-                            "  |  " +
-                            burn.actualSpeed;
-                    }
-                    if (burn.bufferPercent >= 0) {
-                        burnDetails +=
-                            "  |  buffer " +
-                            std::to_string(
-                                burn.bufferPercent) +
-                            "%";
-                    }
+                    burnDetails = "Burn failed";
                 }
-            } else {
-                burnDetails = "Burn failed";
+
+                const float detailWidth =
+                    ImGui::CalcTextSize(burnDetails.c_str()).x;
+                ImGui::SetCursorPosX(
+                    ImGui::GetCursorPosX() +
+                    std::max(
+                        0.0F,
+                        (artSize - detailWidth) * 0.5F));
+                ImGui::TextUnformatted(burnDetails.c_str());
             }
-            const float detailWidth = ImGui::CalcTextSize(burnDetails.c_str()).x;
-            ImGui::SetCursorPosX(
-                ImGui::GetCursorPosX() + std::max(0.0F, (artSize - detailWidth) * 0.5F));
-            ImGui::TextUnformatted(burnDetails.c_str());
         }
 
         ImGui::TableNextColumn();
@@ -774,6 +890,47 @@ void DrawApp(
         }
         ImGui::EndDisabled();
 
+        if (state.selectedConsole == ConsoleProfile::Xbox360) {
+            ImGui::Spacing();
+            ImGui::TextDisabled("XBOX 360 DISC FORMAT");
+            ImGui::BeginDisabled(burn.busy);
+            ImGui::SetNextItemWidth(-1.0F);
+            if (ImGui::BeginCombo(
+                    "##Xbox360DiscType",
+                    Xbox360DiscTypeName(state.xbox360DiscType))) {
+                for (int mode = 0; mode < 2; ++mode) {
+                    const Xbox360DiscType type =
+                        mode == 0
+                            ? Xbox360DiscType::Xgd2
+                            : Xbox360DiscType::Xgd3;
+                    const bool selected =
+                        state.xbox360DiscType == type;
+                    if (ImGui::Selectable(
+                            Xbox360DiscTypeName(type),
+                            selected)) {
+                        state.xbox360DiscType = type;
+                        state.selectedSpeed = 0;
+                        burnEngine.Reset();
+                        state.status =
+                            type == Xbox360DiscType::Xgd3
+                                ? "XGD3 selected. Requires a BurnerMAX-compatible DVD+R DL writer/firmware."
+                                : "XGD2 selected. Use blank DVD+R DL media.";
+                    }
+                    if (selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::EndDisabled();
+
+            if (state.xbox360DiscType == Xbox360DiscType::Xgd3) {
+                ImGui::TextColored(
+                    ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
+                    "XGD3 requires BurnerMAX-compatible hardware/firmware; a standard DVD+R DL writer is not enough.");
+            }
+        }
+
         ImGui::Spacing();
 
         ImGui::TextDisabled("DISC IMAGE");
@@ -798,6 +955,7 @@ void DrawApp(
             BurnRequest request;
             request.cdiPath = state.selectedCdi;
             request.target = ToBurnTarget(state.selectedConsole);
+            request.xbox360DiscType = state.xbox360DiscType;
             request.checkOnly = true;
             (void)burnEngine.Start(std::move(request));
         }
@@ -843,8 +1001,7 @@ void DrawApp(
         ImGui::Spacing();
         ImGui::TextDisabled("WRITE SPEED");
         const bool dvdSpeedMode =
-            state.selectedConsole ==
-            ConsoleProfile::PlayStation2Dvd;
+            IsDvdProfile(state.selectedConsole);
 
         std::string speedPreview = "Automatic (recommended)";
 
@@ -906,10 +1063,7 @@ void DrawApp(
 
         ImGui::EndDisabled();
 
-        if (dvdSpeedMode) {
-            ImGui::TextDisabled(
-                "PS2 DVD: speed left to drive/media for the first validation.");
-        } else if (drive != nullptr) {
+        if (drive != nullptr) {
             ImGui::TextDisabled(
                 "%s",
                 drive->speedQueryMessage.c_str());
@@ -918,28 +1072,42 @@ void DrawApp(
                 "Connect a USB or internal CD/DVD writer, then press Refresh.");
         }
 
-        ImGui::Spacing();        const std::string& currentStatus =
+        ImGui::Spacing();
+        const std::string& currentStatus =
             burn.stage == BurnStage::Idle ? state.status : burn.status;
         ImGui::TextWrapped("%s", currentStatus.c_str());
 
         const bool dvdProfile =
-            state.selectedConsole ==
-            ConsoleProfile::PlayStation2Dvd;
+            IsDvdProfile(state.selectedConsole);
+        const bool xboxProfile =
+            state.selectedConsole == ConsoleProfile::Xbox360;
+        const bool ps2DvdProfile =
+            state.selectedConsole == ConsoleProfile::PlayStation2Dvd;
+        const bool ps2NeedsDualLayer =
+            SelectedPs2ImageNeedsDualLayer(state);
 
         const bool profileSupported =
             drive == nullptr ||
-            (dvdProfile
-                ? drive->currentProfile == 0x0011
-                : (drive->currentProfile == 0 ||
-                   drive->currentProfile == 0x0009));
+            (xboxProfile
+                ? drive->currentProfile == 0x002B
+                : (ps2DvdProfile
+                    ? (ps2NeedsDualLayer
+                        ? (drive->currentProfile == 0x0015 ||
+                           drive->currentProfile == 0x0016 ||
+                           drive->currentProfile == 0x002B)
+                        : (drive->currentProfile == 0x0011 ||
+                           drive->currentProfile == 0x001B ||
+                           drive->currentProfile == 0x0015 ||
+                           drive->currentProfile == 0x0016 ||
+                           drive->currentProfile == 0x002B))
+                    : (drive->currentProfile == 0 ||
+                       drive->currentProfile == 0x0009)));
 
         const bool blankSupported =
             drive == nullptr ||
             (dvdProfile
-                ? (drive->blankMediaKnown &&
-                   drive->blankMedia)
-                : (!drive->blankMediaKnown ||
-                   drive->blankMedia));
+                ? (drive->blankMediaKnown && drive->blankMedia)
+                : (!drive->blankMediaKnown || drive->blankMedia));
 
         const bool writerSupported =
             drive == nullptr ||
@@ -950,7 +1118,8 @@ void DrawApp(
         const bool backendReady =
             drive != nullptr &&
             (dvdProfile
-                ? !drive->rootPath.empty()
+                ? (!drive->rootPath.empty() ||
+                   drive->devicePath.size() >= 6)
                 : !drive->cdrecordDevice.empty());
 
         const bool canBurn =
@@ -963,31 +1132,39 @@ void DrawApp(
             writerSupported &&
             backendReady;
 
+        const char* burnButtonLabel =
+            xboxProfile
+                ? "BURN XBOX 360"
+                : (ps2DvdProfile ? "BURN DVD" : "BURN DISC");
+
         ImGui::BeginDisabled(!canBurn);
         if (ImGui::Button(
-                dvdProfile
-                    ? "BURN DVD-R"
-                    : "BURN DISC",
+                burnButtonLabel,
                 ImVec2(-1.0F, 48.0F))) {
-            ImGui::OpenPopup(
-                "Confirm burn");
+            ImGui::OpenPopup("Confirm burn");
         }
         ImGui::EndDisabled();
 
         if (dvdProfile) {
-            ImGui::BeginDisabled(
-                !canBurn);
+            ImGui::BeginDisabled(!canBurn);
+
+            const char* dryRunLabel =
+                xboxProfile
+                    ? (state.xbox360DiscType == Xbox360DiscType::Xgd3
+                        ? "CHECK XGD3 BURNER - DRY RUN"
+                        : "DRY RUN DVD+R DL - NO WRITE")
+                    : "DRY RUN DVD - NO WRITE";
 
             if (ImGui::Button(
-                    "DRY RUN DVD-R - NO WRITE",
+                    dryRunLabel,
                     ImVec2(-1.0F, 35.0F))) {
                 if (drive != nullptr) {
                     BurnRequest request;
-                    request.cdiPath =
-                        state.selectedCdi;
+                    request.cdiPath = state.selectedCdi;
                     request.target =
-                        ToBurnTarget(
-                            state.selectedConsole);
+                        ToBurnTarget(state.selectedConsole);
+                    request.xbox360DiscType =
+                        state.xbox360DiscType;
                     request.cdrecordDevice =
                         drive->cdrecordDevice;
                     request.opticalDriveRoot =
@@ -997,9 +1174,7 @@ void DrawApp(
                                 ? drive->devicePath.substr(4, 2)
                                 : drive->rootPath);
                     request.requestedSpeedX =
-                        SelectedSpeedX(
-                            state,
-                            drive);
+                        SelectedSpeedX(state, drive);
                     request.checkOnly = false;
                     request.simulate = true;
 
@@ -1011,8 +1186,7 @@ void DrawApp(
             ImGui::EndDisabled();
         }
 
-        if (!canBurn &&
-            !burn.busy) {
+        if (!canBurn && !burn.busy) {
             if (state.selectedCdi.empty()) {
                 ImGui::TextDisabled(
                     "Choose a compatible disc image first.");
@@ -1020,26 +1194,44 @@ void DrawApp(
                 ImGui::TextDisabled(
                     "Connect and select an optical writer.");
             } else if (!drive->mediaPresent) {
-                ImGui::TextDisabled(
-                    dvdProfile
-                        ? "Insert a blank DVD-R, then press Refresh."
-                        : "Insert a blank CD-R, then press Refresh.");
+                if (xboxProfile) {
+                    ImGui::TextDisabled(
+                        "Insert a blank DVD+R DL, then press Refresh.");
+                } else if (ps2DvdProfile) {
+                    ImGui::TextDisabled(
+                        ps2NeedsDualLayer
+                            ? "Insert a blank dual-layer DVD, then press Refresh."
+                            : "Insert a blank DVD-R / DVD+R, then press Refresh.");
+                } else {
+                    ImGui::TextDisabled(
+                        "Insert a blank CD-R, then press Refresh.");
+                }
             } else if (!profileSupported) {
-                ImGui::TextDisabled(
-                    dvdProfile
-                        ? "PS2 DVD validation currently requires blank single-layer DVD-R media."
-                        : "This console profile currently requires CD-R media.");
+                if (xboxProfile) {
+                    ImGui::TextDisabled(
+                        "Xbox 360 burning requires blank DVD+R DL media.");
+                } else if (ps2DvdProfile) {
+                    ImGui::TextDisabled(
+                        ps2NeedsDualLayer
+                            ? "This PS2 image requires DVD-R DL or DVD+R DL media."
+                            : "PS2 DVD supports blank DVD-R, DVD+R, DVD-R DL or DVD+R DL media.");
+                } else {
+                    ImGui::TextDisabled(
+                        "This console profile currently requires CD-R media.");
+                }
             } else if (!blankSupported) {
                 ImGui::TextDisabled(
                     dvdProfile
-                        ? "The drive must positively report a blank DVD-R for the first PS2 DVD tests."
+                        ? "The inserted DVD must be positively reported as blank."
                         : "The inserted CD-R is not blank.");
             } else if (!writerSupported) {
                 ImGui::TextDisabled(
                     "The selected optical drive cannot write CD-R media.");
             } else if (!backendReady) {
                 ImGui::TextDisabled(
-                    "Could not map this drive to cdrecord. Press Refresh and check the Burn log.");
+                    dvdProfile
+                        ? "Could not access the selected Windows DVD writer. Press Refresh."
+                        : "Could not map this drive to cdrecord. Press Refresh and check the Burn log.");
             }
         }
         ImGui::Spacing();
@@ -1072,16 +1264,24 @@ void DrawApp(
                 "Confirm burn",
                 nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize)) {
+            const char* mediaLabel =
+                xboxProfile
+                    ? "DVD+R DL"
+                    : (ps2DvdProfile ? "DVD" : "CD-R");
+
             ImGui::Text(
                 "This will permanently write the selected %s.",
-                dvdProfile
-                    ? "DVD-R"
-                    : "CD-R");
+                mediaLabel);
 
             ImGui::Text(
                 "Target: %s",
-                ConsoleName(
-                    state.selectedConsole));
+                ConsoleName(state.selectedConsole));
+
+            if (xboxProfile) {
+                ImGui::Text(
+                    "Format: %s",
+                    Xbox360DiscTypeName(state.xbox360DiscType));
+            }
 
             if (drive != nullptr) {
                 ImGui::Text(
@@ -1089,9 +1289,7 @@ void DrawApp(
                     drive->DisplayName().c_str());
 
                 const int selectedSpeed =
-                    SelectedSpeedX(
-                        state,
-                        drive);
+                    SelectedSpeedX(state, drive);
 
                 ImGui::Text(
                     "Speed: %s",
@@ -1099,48 +1297,54 @@ void DrawApp(
                         ? (dvdProfile
                             ? "Automatic - DVD drive/media negotiates"
                             : "Automatic - firmware negotiates")
-                        : (std::to_string(
-                               selectedSpeed) +
+                        : (std::to_string(selectedSpeed) +
                            "x requested")
                               .c_str());
 
                 if (!drive->blankMediaKnown) {
                     ImGui::TextColored(
-                        ImVec4(
-                            1.00F,
-                            0.62F,
-                            0.24F,
-                            1.00F),
-                        "The drive did not report blank state; cdrecord will verify it before writing.");
+                        ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
+                        "The drive did not report blank state; the recording backend will verify it before writing.");
                 }
             }
 
-            if (dvdProfile) {
+            if (ps2DvdProfile) {
                 ImGui::TextColored(
-                    ImVec4(
-                        1.00F,
-                        0.62F,
-                        0.24F,
-                        1.00F),
-                    "Single-layer PS2 DVD-R is proven. DRY RUN is optional before a real write.");
+                    ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
+                    ps2NeedsDualLayer
+                        ? "Dual-layer PS2 image selected. The inserted DL medium must have enough writable capacity."
+                        : "Single-layer PS2 DVD burning is proven; DVD+R and dual-layer media are also accepted when compatible.");
+            }
+
+            if (xboxProfile) {
+                if (state.xbox360DiscType == Xbox360DiscType::Xgd3) {
+                    ImGui::TextColored(
+                        ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
+                        "XGD3 requires a BurnerMAX-compatible writer/firmware. Retro Burner checks reported capacity before writing.");
+                } else {
+                    ImGui::TextColored(
+                        ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
+                        "Xbox 360 XGD2 requires blank DVD+R DL media and uses the 1913760 layer break.");
+                }
             }
 
             ImGui::Spacing();
 
+            const char* confirmButtonLabel =
+                xboxProfile
+                    ? "Burn Xbox 360 now"
+                    : (ps2DvdProfile ? "Burn DVD now" : "Burn now");
+
             if (ImGui::Button(
-                    dvdProfile
-                        ? "Burn DVD-R now"
-                        : "Burn now",
-                    ImVec2(
-                        150.0F,
-                        0.0F))) {
+                    confirmButtonLabel,
+                    ImVec2(170.0F, 0.0F))) {
                 if (drive != nullptr) {
                     BurnRequest request;
-                    request.cdiPath =
-                        state.selectedCdi;
+                    request.cdiPath = state.selectedCdi;
                     request.target =
-                        ToBurnTarget(
-                            state.selectedConsole);
+                        ToBurnTarget(state.selectedConsole);
+                    request.xbox360DiscType =
+                        state.xbox360DiscType;
                     request.cdrecordDevice =
                         drive->cdrecordDevice;
                     request.opticalDriveRoot =
@@ -1148,10 +1352,9 @@ void DrawApp(
                             ? drive->rootPath.substr(0, 2)
                             : (drive->devicePath.size() >= 6
                                 ? drive->devicePath.substr(4, 2)
-                                : drive->rootPath);                    request.requestedSpeedX =
-                        SelectedSpeedX(
-                            state,
-                            drive);
+                                : drive->rootPath);
+                    request.requestedSpeedX =
+                        SelectedSpeedX(state, drive);
                     request.checkOnly = false;
                     request.simulate = false;
 
@@ -1166,9 +1369,7 @@ void DrawApp(
 
             if (ImGui::Button(
                     "Cancel",
-                    ImVec2(
-                        120.0F,
-                        0.0F))) {
+                    ImVec2(120.0F, 0.0F))) {
                 ImGui::CloseCurrentPopup();
             }
 
@@ -1390,6 +1591,9 @@ int WINAPI wWinMain(
         LoadPngResource(
             g_device.Get(),
             IDR_PNG_BURNING_SATURN),
+        LoadPngResource(
+            g_device.Get(),
+            IDR_PNG_BURNING_XBOX360),
     };
     const Texture disc =
         LoadPngResource(g_device.Get(), IDR_PNG_SPINNING_DISC);

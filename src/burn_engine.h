@@ -14,12 +14,18 @@ enum class BurnStage {
     Failed,
 };
 
+enum class Xbox360DiscType {
+    Xgd2,
+    Xgd3,
+};
+
 enum class BurnTarget {
     Dreamcast,
     PlayStation,
     PlayStation2Cd,
     PlayStation2Dvd,
     Saturn,
+    Xbox360,
 };
 
 struct BurnRequest final {
@@ -27,11 +33,12 @@ struct BurnRequest final {
     // Retro Burner grows beyond CDI. It now contains the selected image path.
     std::wstring cdiPath;
     BurnTarget target = BurnTarget::Dreamcast;
+    Xbox360DiscType xbox360DiscType = Xbox360DiscType::Xgd2;
     std::string cdrecordDevice;
     std::wstring opticalDriveRoot; // e.g. L"K:" for native Windows DVD tools.
     int requestedSpeedX = 0; // 0 lets the drive/media choose.
     bool checkOnly = false;
-    bool simulate = false;   // cdrecord -dummy: laser off when supported.
+    bool simulate = false;   // -dry-run for growisofs DVD targets.
 };
 
 struct BurnSnapshot final {

@@ -6,6 +6,7 @@ IDR_PNG_BURNING_DC RCDATA "../assets/BurningDC.png"
 IDR_PNG_BURNING_PS1 RCDATA "../assets/BurningPS1.png"
 IDR_PNG_BURNING_PS2 RCDATA "../assets/BurningPS2.png"
 IDR_PNG_BURNING_SATURN RCDATA "../assets/BurningSaturn.png"
+IDR_PNG_BURNING_XBOX360 RCDATA "../assets/BurningXB360.png"
 IDR_PNG_SPINNING_DISC RCDATA "../assets/makeSpinDC.png"
 1 RT_MANIFEST "../assets/app.manifest"
 
