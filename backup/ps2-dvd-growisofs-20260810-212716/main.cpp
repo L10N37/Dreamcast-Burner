@@ -429,34 +429,18 @@ void RefreshDrives(AppState& state) {
     }
 }
 
-[[nodiscard]] std::string FormatSpeed(
-    const WriteSpeed& speed,
-    const bool dvdSpeed) {
-    const float multiplierValue =
-        dvdSpeed
-            ? static_cast<float>(speed.kilobytesPerSecond) / 1385.0F
-            : speed.cdMultiplier;
-    const long roundedMultiplier =
-        std::lround(multiplierValue);
-
+[[nodiscard]] std::string FormatSpeed(const WriteSpeed& speed) {
+    const long roundedMultiplier = std::lround(speed.cdMultiplier);
     std::string multiplier;
-    if (std::abs(
-            multiplierValue -
-            static_cast<float>(roundedMultiplier)) < 0.08F) {
-        multiplier =
-            std::to_string(roundedMultiplier) + "x";
+    if (std::abs(speed.cdMultiplier - static_cast<float>(roundedMultiplier)) < 0.08F) {
+        multiplier = std::to_string(roundedMultiplier) + "x";
     } else {
         char buffer[32]{};
-        snprintf(
-            buffer,
-            sizeof(buffer),
-            "%.1fx",
-            multiplierValue);
+        snprintf(buffer, sizeof(buffer), "%.1fx", speed.cdMultiplier);
         multiplier = buffer;
     }
 
-    return multiplier + "  (" +
-        std::to_string(speed.kilobytesPerSecond) +
+    return multiplier + "  (" + std::to_string(speed.kilobytesPerSecond) +
         " KB/s)";
 }
 
@@ -562,6 +546,11 @@ void DrawDriveDetails(const OpticalDrive& drive) {
 [[nodiscard]] int SelectedSpeedX(
     const AppState& state,
     const OpticalDrive* drive) {
+    if (state.selectedConsole ==
+        ConsoleProfile::PlayStation2Dvd) {
+        return 0;
+    }
+
     if (drive == nullptr ||
         state.selectedSpeed <= 0 ||
         state.selectedSpeed >
@@ -570,27 +559,14 @@ void DrawDriveDetails(const OpticalDrive& drive) {
         return 0;
     }
 
-    const WriteSpeed& speed =
-        drive->writeSpeeds[
-            static_cast<std::size_t>(
-                state.selectedSpeed - 1)];
-
-    if (state.selectedConsole ==
-        ConsoleProfile::PlayStation2Dvd) {
-        return std::max(
-            1,
-            static_cast<int>(
-                std::lround(
-                    static_cast<double>(
-                        speed.kilobytesPerSecond) /
-                    1385.0)));
-    }
-
     return std::max(
         1,
         static_cast<int>(
             std::lround(
-                speed.cdMultiplier)));
+                drive->writeSpeeds[
+                    static_cast<std::size_t>(
+                        state.selectedSpeed - 1)]
+                    .cdMultiplier)));
 }
 void DrawApp(
     AppState& state,
@@ -672,58 +648,15 @@ void DrawApp(
 
             std::string burnDetails;
             if (burn.stage == BurnStage::Complete) {
-                burnDetails = "âœ“ Burn complete!";
+                burnDetails = "Complete";
             } else if (burn.writing) {
-                if (state.selectedConsole ==
-                    ConsoleProfile::PlayStation2Dvd) {
-                    if (!burn.actualSpeed.empty()) {
-                        burnDetails = burn.actualSpeed;
-                    }
-                    if (!burn.remainingTime.empty()) {
-                        if (!burnDetails.empty()) {
-                            burnDetails += "  |  ";
-                        }
-                        burnDetails +=
-                            "remaining " +
-                            burn.remainingTime;
-                    }
-                    if (burn.ringBufferPercent >= 0) {
-                        if (!burnDetails.empty()) {
-                            burnDetails += "  |  ";
-                        }
-                        burnDetails +=
-                            "Read Buffer " +
-                            std::to_string(
-                                burn.ringBufferPercent) +
-                            "%";
-                    }
-                    if (burn.driveBufferPercent >= 0) {
-                        if (!burnDetails.empty()) {
-                            burnDetails += "  |  ";
-                        }
-                        burnDetails +=
-                            "Drive Buffer " +
-                            std::to_string(
-                                burn.driveBufferPercent) +
-                            "%";
-                    }
-                } else {
-                    burnDetails =
-                        "Session " +
-                        std::to_string(burn.session) +
-                        " of 2";
-                    if (!burn.actualSpeed.empty()) {
-                        burnDetails +=
-                            "  |  " +
-                            burn.actualSpeed;
-                    }
-                    if (burn.bufferPercent >= 0) {
-                        burnDetails +=
-                            "  |  buffer " +
-                            std::to_string(
-                                burn.bufferPercent) +
-                            "%";
-                    }
+                burnDetails = "Session " + std::to_string(burn.session) + " of 2";
+                if (!burn.actualSpeed.empty()) {
+                    burnDetails += "  |  " + burn.actualSpeed;
+                }
+                if (burn.bufferPercent >= 0) {
+                    burnDetails += "  |  buffer " +
+                        std::to_string(burn.bufferPercent) + "%";
                 }
             } else {
                 burnDetails = "Burn failed";
@@ -797,8 +730,7 @@ void DrawApp(
         if (ImGui::Button("Check Image", ImVec2(128.0F, 0.0F))) {
             BurnRequest request;
             request.cdiPath = state.selectedCdi;
-            request.target = ToBurnTarget(state.selectedConsole);
-            request.checkOnly = true;
+            request.target = ToBurnTarget(state.selectedConsole); request.target = ToBurnTarget(state.selectedConsole);request.checkOnly = true;
             (void)burnEngine.Start(std::move(request));
         }
         ImGui::EndDisabled();
@@ -846,9 +778,13 @@ void DrawApp(
             state.selectedConsole ==
             ConsoleProfile::PlayStation2Dvd;
 
-        std::string speedPreview = "Automatic (recommended)";
+        std::string speedPreview =
+            dvdSpeedMode
+                ? "Automatic (DVD-R validation)"
+                : "Automatic (recommended)";
 
-        if (drive != nullptr &&
+        if (!dvdSpeedMode &&
+            drive != nullptr &&
             state.selectedSpeed > 0 &&
             state.selectedSpeed <=
                 static_cast<int>(
@@ -857,12 +793,12 @@ void DrawApp(
                 FormatSpeed(
                     drive->writeSpeeds[
                         static_cast<std::size_t>(
-                            state.selectedSpeed - 1)],
-                    dvdSpeedMode);
+                            state.selectedSpeed - 1)]);
         }
 
         ImGui::BeginDisabled(
-            burn.busy);
+            burn.busy ||
+            dvdSpeedMode);
 
         ImGui::SetNextItemWidth(-1.0F);
 
@@ -885,8 +821,7 @@ void DrawApp(
                         FormatSpeed(
                             drive->writeSpeeds[
                                 static_cast<std::size_t>(
-                                    index)],
-                            dvdSpeedMode);
+                                    index)]);
 
                     const bool selected =
                         state.selectedSpeed ==
@@ -926,6 +861,10 @@ void DrawApp(
             state.selectedConsole ==
             ConsoleProfile::PlayStation2Dvd;
 
+        const bool dvdProfile =
+            state.selectedConsole ==
+            ConsoleProfile::PlayStation2Dvd;
+
         const bool profileSupported =
             drive == nullptr ||
             (dvdProfile
@@ -949,9 +888,7 @@ void DrawApp(
 
         const bool backendReady =
             drive != nullptr &&
-            (dvdProfile
-                ? !drive->rootPath.empty()
-                : !drive->cdrecordDevice.empty());
+            !drive->cdrecordDevice.empty();
 
         const bool canBurn =
             !burn.busy &&
@@ -979,7 +916,7 @@ void DrawApp(
                 !canBurn);
 
             if (ImGui::Button(
-                    "DRY RUN DVD-R - NO WRITE",
+                    "SIMULATE DVD-R - NO WRITE",
                     ImVec2(-1.0F, 35.0F))) {
                 if (drive != nullptr) {
                     BurnRequest request;
@@ -990,16 +927,7 @@ void DrawApp(
                             state.selectedConsole);
                     request.cdrecordDevice =
                         drive->cdrecordDevice;
-                    request.opticalDriveRoot =
-                        drive->rootPath.size() >= 2
-                            ? drive->rootPath.substr(0, 2)
-                            : (drive->devicePath.size() >= 6
-                                ? drive->devicePath.substr(4, 2)
-                                : drive->rootPath);
-                    request.requestedSpeedX =
-                        SelectedSpeedX(
-                            state,
-                            drive);
+                    request.requestedSpeedX = 0;
                     request.checkOnly = false;
                     request.simulate = true;
 
@@ -1060,7 +988,7 @@ void DrawApp(
             ImGuiWindowFlags_HorizontalScrollbar);
 
         if (burn.log.empty()) {
-            ImGui::TextDisabled("CDIrip / cdrecord / growisofs output will appear here.");
+            ImGui::TextDisabled("CDIrip / cdrecord output will appear here.");
         } else {
             ImGui::TextUnformatted(burn.log.c_str());
         }
@@ -1122,7 +1050,7 @@ void DrawApp(
                         0.62F,
                         0.24F,
                         1.00F),
-                    "Single-layer PS2 DVD-R is proven. DRY RUN is optional before a real write.");
+                    "First PS2 DVD milestone: single-layer DVD-R only. Run SIMULATE DVD-R first.");
             }
 
             ImGui::Spacing();
@@ -1143,12 +1071,7 @@ void DrawApp(
                             state.selectedConsole);
                     request.cdrecordDevice =
                         drive->cdrecordDevice;
-                    request.opticalDriveRoot =
-                        drive->rootPath.size() >= 2
-                            ? drive->rootPath.substr(0, 2)
-                            : (drive->devicePath.size() >= 6
-                                ? drive->devicePath.substr(4, 2)
-                                : drive->rootPath);                    request.requestedSpeedX =
+                    request.requestedSpeedX =
                         SelectedSpeedX(
                             state,
                             drive);

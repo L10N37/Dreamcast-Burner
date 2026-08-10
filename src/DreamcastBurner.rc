@@ -1,8 +1,0 @@
-#include <windows.h>
-#include "resource.h"
-
-IDI_APP_ICON ICON "../assets/DreamcastBurner.ico"
-IDR_PNG_BURNING_DC RCDATA "../assets/BurningDC.png"
-IDR_PNG_SPINNING_DISC RCDATA "../assets/makeSpinDC.png"
-1 RT_MANIFEST "../assets/app.manifest"
-

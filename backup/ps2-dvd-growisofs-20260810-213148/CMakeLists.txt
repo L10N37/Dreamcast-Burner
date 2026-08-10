@@ -126,7 +126,6 @@ target_link_libraries(RetroBurner PRIVATE
     windowscodecs
     ole32
     shell32
-    winmm
 )
 
 add_dependencies(RetroBurner cdirip)

@@ -1,10 +1,7 @@
 #include "burn_engine.h"
 #include "embedded_tools.h"
-#include "resource.h"
 
 #include <windows.h>
-#include <mmsystem.h>
-#include <winioctl.h>
 
 #include <algorithm>
 #include <array>
@@ -410,13 +407,13 @@ struct ProcessResult final {
     }
 
     static const std::regex trackPattern(
-        "^\\s*TRACK\\s+[0-9]+\\s+\\S+",
+        R"(^\s*TRACK\s+[0-9]+\s+\S+)",
         std::regex::icase);
     static const std::regex quotedFilePattern(
-        "^\\s*FILE\\s+\"([^\"]+)\"\\s+\\S+",
+        R"(^\s*FILE\s+"([^"]+)"\s+\S+)",
         std::regex::icase);
     static const std::regex plainFilePattern(
-        "^\\s*FILE\\s+([^\\s]+)\\s+\\S+",
+        R"(^\s*FILE\s+([^\s]+)\s+\S+)",
         std::regex::icase);
 
     trackCount = 0;
@@ -558,12 +555,13 @@ struct ProcessResult final {
         if (size > kDvdRSingleLayerBytes) {
             errorMessage =
                 "This ISO is larger than a single-layer DVD-R. "
-                "DVD9 / dual-layer support will be enabled as a separate tested path.";
+                "DVD9 / dual-layer burning is intentionally disabled until "
+                "the single-layer PS2 DVD path has been validated on real hardware.";
             return false;
         }
 
         cueTrackCount = 1;
-        layout = "PlayStation 2 DVD ISO - single-layer DVD-R (growisofs)";
+        layout = "PlayStation 2 DVD ISO - single-layer DVD-R";
         return true;
     }
 
@@ -595,45 +593,6 @@ struct ProcessResult final {
         return 1024.0 * 1024.0 * 1024.0;
     }
     return 1.0;
-}
-
-[[nodiscard]] bool EjectOpticalDrive(const std::wstring& rootPath) {
-    if (rootPath.size() < 2 || rootPath[1] != L':') {
-        return false;
-    }
-
-    const std::wstring devicePath =
-        L"\\\\.\\" + rootPath.substr(0, 2);
-
-    UniqueHandle device(CreateFileW(
-        devicePath.c_str(),
-        GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        nullptr,
-        OPEN_EXISTING,
-        0,
-        nullptr));
-    if (!device.Valid()) {
-        return false;
-    }
-
-    DWORD returned = 0;
-    return DeviceIoControl(
-               device.value,
-               IOCTL_STORAGE_EJECT_MEDIA,
-               nullptr,
-               0,
-               nullptr,
-               0,
-               &returned,
-               nullptr) != FALSE;
-}
-
-void PlayBurnCompleteSound() {
-    PlaySoundW(
-        MAKEINTRESOURCEW(IDR_WAV_BURN_COMPLETE),
-        GetModuleHandleW(nullptr),
-        SND_RESOURCE | SND_ASYNC | SND_NODEFAULT);
 }
 
 } // namespace
@@ -695,9 +654,7 @@ void BurnEngine::SetFailure(std::string message) {
 
 void BurnEngine::RunStandardImage(
     BurnRequest request,
-    const std::wstring& cdrecordPath,
-    const std::wstring& growisofsPath,
-    const std::wstring& dvdMediaInfoPath) {
+    const std::wstring& cdrecordPath) {
     const fs::path cdrecord(cdrecordPath);
     const fs::path imagePath(request.cdiPath);
     const fs::path workingDirectory =
@@ -737,180 +694,6 @@ void BurnEngine::RunStandardImage(
         state_.writing = false;
         state_.status =
             layout + ". Check complete; no disc was written.";
-        return;
-    }
-
-    if (request.target == BurnTarget::PlayStation2Dvd) {
-        if (request.opticalDriveRoot.empty()) {
-            SetFailure("The selected Windows DVD drive has no drive letter.");
-            return;
-        }
-
-        const fs::path growisofs(growisofsPath);
-        const fs::path dvdMediaInfo(dvdMediaInfoPath);
-        if (!fs::is_regular_file(growisofs) ||
-            !fs::is_regular_file(dvdMediaInfo)) {
-            SetFailure("The embedded PS2 DVD backend could not be prepared.");
-            return;
-        }
-
-        const auto append =
-            [this](const std::string& text) {
-                AppendLog(text);
-            };
-        const auto ignoreLine =
-            [](std::string_view) {};
-
-        AppendLog("\r\nPS2 DVD media preflight (dvd+rw-mediainfo)\r\n");
-        const ProcessResult mediaInfo = RunHiddenProcess(
-            dvdMediaInfo,
-            {request.opticalDriveRoot},
-            workingDirectory,
-            append,
-            ignoreLine);
-
-        if (!mediaInfo.started) {
-            SetFailure(mediaInfo.error);
-            return;
-        }
-        if (mediaInfo.exitCode != 0) {
-            SetFailure(
-                "dvd+rw-mediainfo could not validate the selected DVD writer/media. "
-                "No image data was written.");
-            return;
-        }
-
-        {
-            std::lock_guard lock(mutex_);
-            state_.stage = BurnStage::BurningSession1;
-            state_.busy = true;
-            state_.writing = !request.simulate;
-            state_.session = 1;
-            state_.progress = 0.0F;
-            state_.bufferPercent = -1;
-            state_.ringBufferPercent = -1;
-            state_.driveBufferPercent = -1;
-            state_.actualSpeed.clear();
-            state_.remainingTime.clear();
-            state_.status = request.simulate
-                ? "PS2 DVD dry run - no write..."
-                : "Writing PlayStation 2 DVD-R...";
-        }
-
-        std::vector<std::wstring> arguments;
-        if (request.simulate) {
-            arguments.emplace_back(L"-dry-run");
-        }
-        arguments.emplace_back(L"-dvd-compat");
-        if (request.requestedSpeedX > 0) {
-            arguments.push_back(
-                L"-speed=" + std::to_wstring(request.requestedSpeedX));
-        }
-        arguments.emplace_back(L"-Z");
-        arguments.push_back(
-            request.opticalDriveRoot + L"=" + imagePath.wstring());
-
-        AppendLog(
-            request.simulate
-                ? "\r\nPS2 DVD DRY RUN - growisofs -dry-run\r\n"
-                : "\r\nPS2 DVD WRITE - growisofs\r\n");
-
-        static const std::regex growProgressPattern(
-            R"(\(\s*([0-9]+(?:\.[0-9]+)?)%\)\s+@([0-9]+(?:\.[0-9]+)?)x,\s+remaining\s+([0-9?:]+)\s+RBU\s+([0-9]+(?:\.[0-9]+)?)%\s+UBU\s+([0-9]+(?:\.[0-9]+)?)%)",
-            std::regex::icase);
-
-        const OutputCallback parseGrowisofs =
-            [this](const std::string_view lineView) {
-                const std::string line(lineView);
-                std::smatch match;
-                if (!std::regex_search(
-                        line,
-                        match,
-                        growProgressPattern)) {
-                    return;
-                }
-
-                const float percent =
-                    std::stof(match[1].str());
-                const std::string speed =
-                    match[2].str() + "x";
-                const std::string remaining =
-                    match[3].str();
-                const int rbu =
-                    static_cast<int>(std::lround(
-                        std::stod(match[4].str())));
-                const int ubu =
-                    static_cast<int>(std::lround(
-                        std::stod(match[5].str())));
-
-                std::lock_guard lock(mutex_);
-                state_.progress = std::clamp(
-                    percent / 100.0F,
-                    state_.progress,
-                    0.999F);
-                state_.actualSpeed = speed;
-                state_.remainingTime = remaining;
-                state_.ringBufferPercent =
-                    std::clamp(rbu, 0, 100);
-                state_.driveBufferPercent =
-                    std::clamp(ubu, 0, 100);
-                state_.status =
-                    "Writing PlayStation 2 DVD-R - " +
-                    std::to_string(
-                        static_cast<int>(
-                            std::lround(percent))) +
-                    "%";
-            };
-
-        const ProcessResult result = RunHiddenProcess(
-            growisofs,
-            arguments,
-            workingDirectory,
-            append,
-            parseGrowisofs);
-
-        if (!result.started) {
-            SetFailure(result.error);
-            return;
-        }
-        if (result.exitCode != 0) {
-            SetFailure(
-                request.simulate
-                    ? "PS2 DVD dry run failed. No image data was intentionally written."
-                    : "PlayStation 2 DVD write failed. The disc may be incomplete; check the burn log.");
-            return;
-        }
-
-        if (request.simulate) {
-            std::lock_guard lock(mutex_);
-            state_.stage = BurnStage::Ready;
-            state_.busy = false;
-            state_.writing = false;
-            state_.progress = 0.0F;
-            state_.status =
-                "PS2 DVD dry run completed successfully. No image data was written.";
-            return;
-        }
-
-        const bool ejected =
-            EjectOpticalDrive(request.opticalDriveRoot);
-        if (!ejected) {
-            AppendLog(
-                "\r\nWARNING: Burn succeeded, but Windows could not automatically eject the disc.\r\n");
-        }
-
-        PlayBurnCompleteSound();
-
-        std::lock_guard lock(mutex_);
-        state_.stage = BurnStage::Complete;
-        state_.busy = false;
-        state_.writing = false;
-        state_.progress = 1.0F;
-        state_.session = 1;
-        state_.remainingTime = "00:00";
-        state_.status = ejected
-            ? "âœ“ Burn complete! Disc ejected."
-            : "âœ“ Burn complete!";
         return;
     }
 
@@ -1156,15 +939,11 @@ void BurnEngine::Run(BurnRequest request) {
     const fs::path appDirectory = tools.directory;
     const fs::path cdirip = tools.cdirip;
     const fs::path cdrecord = tools.cdrecord;
-    const fs::path growisofs = tools.growisofs;
-    const fs::path dvdMediaInfo = tools.dvdMediaInfo;
 
     if (request.target != BurnTarget::Dreamcast) {
         RunStandardImage(
             std::move(request),
-            cdrecord.wstring(),
-            growisofs.wstring(),
-            dvdMediaInfo.wstring());
+            cdrecord.wstring());
         return;
     }
     TemporaryDirectory temporary = MakeTemporaryDirectory();

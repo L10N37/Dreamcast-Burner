@@ -1,8 +1,8 @@
 # Third-Party Components
 
-Dreamcast Burner contains original project code as well as third-party
+Retro Burner contains original project code as well as third-party
 components. The project MIT licence applies only to code original to
-Dreamcast Burner.
+Retro Burner.
 
 ## Dear ImGui
 
@@ -30,7 +30,7 @@ and packaged as `licenses/CDIrip-GPL-2.0.txt`.
 
 Used as the physical optical-disc recording backend.
 
-Bundled backend for Dreamcast Burner 0.3.0:
+Bundled backend for Retro Burner 0.3.0:
 
 `Cdrecord-ProDVD-ProBD-Clone 3.02a10 2021/07/23`
 
@@ -55,3 +55,14 @@ copyright information required by each third-party component.
 Future single-EXE packaging does not remove third-party licence obligations;
 the applicable notices must remain available to users even if helper binaries
 are embedded as application resources.
+## Single-EXE packaging
+
+Retro Burner embeds the required CDIrip executable, cdrecord executable,
+Cygwin runtime and third-party licence notices as Windows resources.
+
+At runtime the helper binaries are extracted into a private temporary
+directory for the lifetime of the Retro Burner process and are removed on
+normal application exit.
+
+Embedding a component does not alter its licence. All third-party components
+retain their original copyright and licensing terms.

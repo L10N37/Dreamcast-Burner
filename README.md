@@ -1,17 +1,19 @@
-![Dreamcast Burner](Images/dreamcastburner.png)
-![Dreamcast Burner](Images/1.png)
-![Dreamcast Burner](Images/2.png)
-# Dreamcast Burner
+![Retro Burner](Images/dreamcastburner.png)
+![Retro Burner](Images/1.png)
+![Retro Burner](Images/2.png)
+# Retro Burner
 
-**Dreamcast Burner** is a native Windows GUI for burning Sega Dreamcast **DiscJuggler CDI images** to CD-R.
+**Retro Burner** is a native Windows optical-disc burning frontend focused on retro consoles. The current 0.4.0 development branch retains the proven Dreamcast CDI workflow while the application is being expanded to additional console/media profiles.
+
+The application is being refactored as a **single distributable Windows executable**. Required command-line backends are embedded into RetroBurner.exe and extracted to a private temporary directory only while the application is running.
 
 It provides a modern front end around the existing open-source command-line tools required to extract and record Dreamcast CDI images, with automatic drive/media detection, burn progress, logging and sensible Dreamcast-specific defaults.
 
 The application does **not** implement its own CD recording engine.
 
-Instead, Dreamcast Burner acts as a GUI / frontend / wrapper around **CDIrip** and **cdrecord**, handling the workflow and presenting their functionality through a simple Windows interface.
+Instead, Retro Burner acts as a GUI / frontend / wrapper around **CDIrip** and **cdrecord**, handling the workflow and presenting their functionality through a simple Windows interface.
 
-**Current version: 0.3.0**
+**Current development version: 0.4.0**
 
 ---
 
@@ -51,7 +53,7 @@ Instead, Dreamcast Burner acts as a GUI / frontend / wrapper around **CDIrip** a
 
 ## Supported Images
 
-The current Dreamcast Burner workflow is designed for:
+The current Retro Burner workflow is designed for:
 
 ```text
 DiscJuggler CDI (.cdi)
@@ -64,7 +66,7 @@ Session 1 - data
 Session 2 - data
 ```
 
-The underlying recording tools are technically capable of considerably more than this, but **Dreamcast Burner intentionally exposes only the workflow required for Dreamcast CDI burning**.
+The underlying recording tools are technically capable of considerably more than this, but **Retro Burner intentionally exposes only the workflow required for Dreamcast CDI burning**.
 
 Other disc image formats are not currently considered supported by the GUI.
 
@@ -72,7 +74,7 @@ Other disc image formats are not currently considered supported by the GUI.
 
 ## How It Works
 
-Dreamcast Burner coordinates several existing components.
+Retro Burner coordinates several existing components.
 
 The basic process is:
 
@@ -85,7 +87,7 @@ Dreamcast CDI
      +--> Session / track extraction
      |
      v
- Dreamcast Burner
+ Retro Burner
      |
      +--> drive and media preflight
      +--> session sequencing
@@ -107,7 +109,7 @@ CDIrip identifies the sessions and tracks contained in the DiscJuggler image and
 
 ### 2. Drive and media preflight
 
-Before burning, Dreamcast Burner uses the recording backend to query the selected optical drive and inserted media.
+Before burning, Retro Burner uses the recording backend to query the selected optical drive and inserted media.
 
 Depending on what the drive reports, this can include:
 
@@ -127,11 +129,11 @@ This lets the GUI check the burner and blank disc before starting the write oper
 
 The extracted tracks are passed to **cdrecord**.
 
-Dreamcast Burner launches the required recording commands, monitors their output and handles each CDI session in the correct order.
+Retro Burner launches the required recording commands, monitors their output and handles each CDI session in the correct order.
 
 ### 4. Progress
 
-Output from CDIrip and cdrecord is parsed by Dreamcast Burner and presented through the GUI as extraction and burn progress.
+Output from CDIrip and cdrecord is parsed by Retro Burner and presented through the GUI as extraction and burn progress.
 
 The command-line tools remain the components actually performing CDI extraction and disc recording.
 
@@ -139,13 +141,13 @@ The command-line tools remain the components actually performing CDI extraction 
 
 ## Third-Party Software
 
-Dreamcast Burner is built using and/or distributed alongside several open-source projects.
+Retro Burner is built using and/or distributed alongside several open-source projects.
 
 These projects remain the property of their respective authors and are distributed according to their own licences.
 
 ### Dear ImGui
 
-Dreamcast Burner's user interface is built using **Dear ImGui**.
+Retro Burner's user interface is built using **Dear ImGui**.
 
 Upstream project:
 
@@ -183,7 +185,7 @@ Copyright (C) 2004 DeXT / Lawrence Williams
 
 CDIrip is open-source software distributed under the **GNU General Public License version 2**.
 
-Dreamcast Burner does not claim ownership of CDIrip.
+Retro Burner does not claim ownership of CDIrip.
 
 The CDIrip source used to build the bundled executable is located under:
 
@@ -208,9 +210,9 @@ Cdrecord-ProDVD-ProBD-Clone 2.01.01a36
 Copyright (C) 1995-2007 Jörg Schilling
 ```
 
-Dreamcast Burner launches cdrecord as a separate executable and parses its console output.
+Retro Burner launches cdrecord as a separate executable and parses its console output.
 
-Dreamcast Burner does not contain or claim ownership of the cdrecord recording engine.
+Retro Burner does not contain or claim ownership of the cdrecord recording engine.
 
 The licence texts supplied with the bundled cdrecord distribution are included under:
 
@@ -235,19 +237,19 @@ The applicable Cygwin/GPL licence information is included as:
 licenses/Cygwin-GPL-2.0.txt
 ```
 
-Cygwin is a third-party project and is not part of the original Dreamcast Burner source code.
+Cygwin is a third-party project and is not part of the original Retro Burner source code.
 
 ---
 
 ## Important Licensing Note
 
-**Dreamcast Burner is a frontend.**
+**Retro Burner is a frontend.**
 
-The original Dreamcast Burner GUI, drive-management, process-management and supporting source code may be distributed under the **MIT License**.
+The original Retro Burner GUI, drive-management, process-management and supporting source code may be distributed under the **MIT License**.
 
-That licence applies only to code original to the Dreamcast Burner project.
+That licence applies only to code original to the Retro Burner project.
 
-It does **not** relicense third-party software bundled with or used by Dreamcast Burner.
+It does **not** relicense third-party software bundled with or used by Retro Burner.
 
 In particular:
 
@@ -256,7 +258,7 @@ In particular:
 * cdrecord remains under the licence terms supplied with that software.
 * Cygwin remains under its applicable licence terms.
 
-When redistributing Dreamcast Burner, retain the relevant third-party copyright notices, licence files and any source-code availability obligations required by those projects.
+When redistributing Retro Burner, retain the relevant third-party copyright notices, licence files and any source-code availability obligations required by those projects.
 
 See:
 
@@ -270,9 +272,9 @@ for further information.
 
 ---
 
-## Dreamcast Burner License
+## Retro Burner License
 
-The original Dreamcast Burner source code is released under the **MIT License**.
+The original Retro Burner source code is released under the **MIT License**.
 
 In short, you are free to:
 
@@ -309,7 +311,7 @@ A good-quality CD-R is strongly recommended.
 
 Old, scratched, dirty or poorly stored blank media can produce write errors even when the application, burner and image are functioning correctly.
 
-A write failure reported by Dreamcast Burner generally means the underlying recording tool or optical drive reported a failure. The full backend output can be viewed in the burn log.
+A write failure reported by Retro Burner generally means the underlying recording tool or optical drive reported a failure. The full backend output can be viewed in the burn log.
 
 ---
 
@@ -323,7 +325,7 @@ A write failure reported by Dreamcast Burner generally means the underlying reco
 * CMake 3.24 or newer
 * PowerShell
 
-Dreamcast Burner uses C++20.
+Retro Burner uses C++20.
 
 ### Dependencies
 
@@ -364,7 +366,7 @@ The build system uses the Visual Studio 2022 x64 generator and produces the nati
 ## Project Layout
 
 ```text
-DreamcastBurner/
+RetroBurner/
 │
 ├── Images/
 │   └── dreamcastburner.png
@@ -429,13 +431,13 @@ The percentage represents the progress reported by the extraction/recording proc
 
 A disc can finish transferring its track data and still fail during the final write, flush or fixation stage.
 
-Dreamcast Burner therefore uses the final result reported by the backend rather than assuming that reaching 100% means the disc was successfully completed.
+Retro Burner therefore uses the final result reported by the backend rather than assuming that reaching 100% means the disc was successfully completed.
 
 ---
 
 ## Disclaimer
 
-Dreamcast Burner is an independent community project.
+Retro Burner is an independent community project.
 
 It is **not affiliated with, endorsed by, sponsored by, or produced by Sega Corporation**.
 
@@ -443,13 +445,13 @@ Dreamcast, the Dreamcast name, logos and associated trademarks are the property 
 
 This software is intended for use with disc images that you are legally entitled to use.
 
-No Sega software, BIOS files, game data or copyrighted Dreamcast game images are included with Dreamcast Burner.
+No Sega software, BIOS files, game data or copyrighted Dreamcast game images are included with Retro Burner.
 
 ---
 
 ## Credits
 
-Dreamcast Burner brings together work from several open-source projects.
+Retro Burner brings together work from several open-source projects.
 
 Special thanks to:
 
@@ -463,4 +465,4 @@ Special thanks to:
 
 ## Status
 
-Dreamcast Burner has been tested with real Dreamcast CDI images, physical optical writers and real CD-R media.
+Retro Burner has been tested with real Dreamcast CDI images, physical optical writers and real CD-R media.

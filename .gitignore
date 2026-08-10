@@ -9,3 +9,4 @@ CMakeCache.txt
 CMakeFiles/
 .vscode/
 *.old
+tools/.embedded/

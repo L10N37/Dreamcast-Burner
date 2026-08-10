@@ -926,6 +926,10 @@ void DrawApp(
             state.selectedConsole ==
             ConsoleProfile::PlayStation2Dvd;
 
+        const bool dvdProfile =
+            state.selectedConsole ==
+            ConsoleProfile::PlayStation2Dvd;
+
         const bool profileSupported =
             drive == nullptr ||
             (dvdProfile
@@ -993,9 +997,7 @@ void DrawApp(
                     request.opticalDriveRoot =
                         drive->rootPath.size() >= 2
                             ? drive->rootPath.substr(0, 2)
-                            : (drive->devicePath.size() >= 6
-                                ? drive->devicePath.substr(4, 2)
-                                : drive->rootPath);
+                            : drive->rootPath;
                     request.requestedSpeedX =
                         SelectedSpeedX(
                             state,
@@ -1143,12 +1145,7 @@ void DrawApp(
                             state.selectedConsole);
                     request.cdrecordDevice =
                         drive->cdrecordDevice;
-                    request.opticalDriveRoot =
-                        drive->rootPath.size() >= 2
-                            ? drive->rootPath.substr(0, 2)
-                            : (drive->devicePath.size() >= 6
-                                ? drive->devicePath.substr(4, 2)
-                                : drive->rootPath);                    request.requestedSpeedX =
+                    request.requestedSpeedX =
                         SelectedSpeedX(
                             state,
                             drive);

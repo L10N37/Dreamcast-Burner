@@ -28,7 +28,6 @@ struct BurnRequest final {
     std::wstring cdiPath;
     BurnTarget target = BurnTarget::Dreamcast;
     std::string cdrecordDevice;
-    std::wstring opticalDriveRoot; // e.g. L"K:" for native Windows DVD tools.
     int requestedSpeedX = 0; // 0 lets the drive/media choose.
     bool checkOnly = false;
     bool simulate = false;   // cdrecord -dummy: laser off when supported.
@@ -41,10 +40,7 @@ struct BurnSnapshot final {
     float progress = 0.0F;
     int session = 0;
     int bufferPercent = -1;
-    int ringBufferPercent = -1;
-    int driveBufferPercent = -1;
     std::string actualSpeed;
-    std::string remainingTime;
     std::string layout;
     std::string status = "Choose a disc image.";
     std::string log;
@@ -64,11 +60,7 @@ public:
 
 private:
     void Run(BurnRequest request);
-    void RunStandardImage(
-        BurnRequest request,
-        const std::wstring& cdrecordPath,
-        const std::wstring& growisofsPath,
-        const std::wstring& dvdMediaInfoPath);
+    void RunStandardImage(BurnRequest request, const std::wstring& cdrecordPath);
     void SetFailure(std::string message);
     void AppendLog(const std::string& text);
 

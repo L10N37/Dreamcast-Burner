@@ -97,7 +97,7 @@ add_executable(RetroBurner WIN32
 
 set_source_files_properties(src/RetroBurner.rc PROPERTIES
     OBJECT_DEPENDS
-        "${CDIRIP_EMBED_DIR}/cdirip.exe;${CMAKE_CURRENT_SOURCE_DIR}/tools/cdrecord.exe;${CMAKE_CURRENT_SOURCE_DIR}/tools/cygwin1.dll;${CMAKE_CURRENT_SOURCE_DIR}/tools/growisofs.exe;${CMAKE_CURRENT_SOURCE_DIR}/tools/dvd+rw-mediainfo.exe;${CMAKE_CURRENT_SOURCE_DIR}/assets/mixkit-cartoon-monkey-mocking-laugh-107.wav;${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY.md;${CDIRIP_DIR}/LICENSE;${CMAKE_CURRENT_SOURCE_DIR}/licenses/cdrecord-cddl.txt;${CMAKE_CURRENT_SOURCE_DIR}/licenses/cdrecord-gpl3.txt;${CMAKE_CURRENT_SOURCE_DIR}/licenses/cygwin-GPL-2.0.txt;${IMGUI_DIR}/LICENSE.txt"
+        "${CDIRIP_EMBED_DIR}/cdirip.exe;${CMAKE_CURRENT_SOURCE_DIR}/tools/cdrecord.exe;${CMAKE_CURRENT_SOURCE_DIR}/tools/cygwin1.dll;${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY.md;${CDIRIP_DIR}/LICENSE;${CMAKE_CURRENT_SOURCE_DIR}/licenses/cdrecord-cddl.txt;${CMAKE_CURRENT_SOURCE_DIR}/licenses/cdrecord-gpl3.txt;${CMAKE_CURRENT_SOURCE_DIR}/licenses/cygwin-GPL-2.0.txt;${IMGUI_DIR}/LICENSE.txt"
 )
 target_compile_definitions(RetroBurner PRIVATE
     UNICODE
@@ -126,7 +126,6 @@ target_link_libraries(RetroBurner PRIVATE
     windowscodecs
     ole32
     shell32
-    winmm
 )
 
 add_dependencies(RetroBurner cdirip)

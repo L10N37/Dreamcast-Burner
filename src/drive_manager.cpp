@@ -1,4 +1,5 @@
 #include "drive_manager.h"
+#include "embedded_tools.h"
 
 #include <windows.h>
 #include <winioctl.h>
@@ -476,8 +477,12 @@ void AddWriteSpeed(
     case 0x0012: return "DVD-RAM";
     case 0x0013: return "DVD-RW restricted overwrite";
     case 0x0014: return "DVD-RW sequential";
+    case 0x0015: return "DVD-R DL sequential";
+    case 0x0016: return "DVD-R DL layer jump";
     case 0x001A: return "DVD+RW";
     case 0x001B: return "DVD+R";
+    case 0x002A: return "DVD+RW DL";
+    case 0x002B: return "DVD+R DL";
     case 0x0040: return "BD-ROM";
     case 0x0041: return "BD-R sequential";
     case 0x0042: return "BD-R random";
@@ -747,22 +752,11 @@ struct CdrecordScanEntry final {
 
 [[nodiscard]] std::vector<CdrecordScanEntry> ScanCdrecordDevices() {
     std::vector<CdrecordScanEntry> entries;
-
-    std::array<wchar_t, MAX_PATH> modulePath{};
-    const DWORD moduleLength = GetModuleFileNameW(
-        nullptr,
-        modulePath.data(),
-        static_cast<DWORD>(modulePath.size()));
-    if (moduleLength == 0 || moduleLength >= modulePath.size()) {
+    const EmbeddedToolPaths& tools = GetEmbeddedToolPaths();
+    if (!tools.Ready()) {
         return entries;
     }
-
-    std::filesystem::path cdrecord =
-        std::filesystem::path(modulePath.data()).parent_path() /
-        L"tools" / L"cdrecord.exe";
-    if (!std::filesystem::is_regular_file(cdrecord)) {
-        return entries;
-    }
+    const std::filesystem::path& cdrecord = tools.cdrecord;
 
     std::string output;
     if (!RunProcessCapture(cdrecord.wstring(), L"-scanbus", output)) {

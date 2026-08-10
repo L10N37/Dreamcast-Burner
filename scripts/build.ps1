@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $buildRoot = Join-Path $projectRoot "build\msvc-x64"
-$installRoot = Join-Path $projectRoot "dist\DreamcastBurner"
+$installRoot = Join-Path $projectRoot "dist\RetroBurner"
 
 function Find-CMakeVisualStudioGenerator {
     param(
@@ -124,7 +124,7 @@ finally {
     Pop-Location
 }
 
-$binary = Join-Path $buildRoot "$Configuration\DreamcastBurner.exe"
+$binary = Join-Path $buildRoot "$Configuration\RetroBurner.exe"
 if (-not (Test-Path $binary)) {
     throw "The build completed without producing the expected executable: $binary"
 }

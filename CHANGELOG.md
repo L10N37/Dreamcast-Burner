@@ -2,6 +2,31 @@
 
 All notable project changes are recorded here.
 
+## [Unreleased] - Retro Burner 0.4.0
+
+### Changed
+
+- Renamed the application from Dreamcast Burner to Retro Burner.
+- Changed the Windows executable name to `RetroBurner.exe`.
+- Began the multi-console architecture from the proven Dreamcast 0.3.0 baseline.
+
+### Packaging
+
+- CDIrip, cdrecord and the required Cygwin runtime are embedded into the main
+  executable as Windows resources.
+- Backend files are extracted to a private temporary directory only while the
+  application is running.
+- Release output no longer requires a visible `tools` directory.
+- Third-party licence notices are embedded into the executable as resources
+  for the forthcoming About / Licences UI.
+
+### Not yet changed
+
+- The actual burn workflow remains Dreamcast CDI-only in this first refactor
+  checkpoint.
+- Clean application-level logging and additional console/media profiles are
+  the next steps.
+
 ## [0.3.0] - 2026-08-10
 
 ### Added
