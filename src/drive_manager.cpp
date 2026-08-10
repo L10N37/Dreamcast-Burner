@@ -17,6 +17,9 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <regex>
+#include <filesystem>
+#include <sstream>
 #include <vector>
 
 namespace {
@@ -647,32 +650,191 @@ void QueryCdrecordAddress(const HANDLE handle, OpticalDrive& drive) {
     return keys;
 }
 
-void AssignCdrecordAddresses(std::vector<OpticalDrive>& drives) {
-    std::vector<std::uint16_t> keys = EnumerateCdrtoolsAdapterKeys();
-    for (const OpticalDrive& drive : drives) {
-        if (drive.scsiAddressValid) {
-            keys.push_back(drive.scsiBusKey);
-        }
+struct CdrecordScanEntry final {
+    std::string address;
+    std::string vendor;
+    std::string product;
+    std::string revision;
+};
+
+[[nodiscard]] std::string NormalizeInquiryField(std::string value) {
+    value = TrimAscii(std::move(value));
+    std::transform(
+        value.begin(),
+        value.end(),
+        value.begin(),
+        [](const unsigned char c) {
+            return static_cast<char>(std::toupper(c));
+        });
+    return value;
+}
+
+[[nodiscard]] bool RunProcessCapture(
+    const std::wstring& executable,
+    const std::wstring& arguments,
+    std::string& output) {
+    SECURITY_ATTRIBUTES security{};
+    security.nLength = sizeof(security);
+    security.bInheritHandle = TRUE;
+
+    HANDLE readPipeRaw = nullptr;
+    HANDLE writePipeRaw = nullptr;
+    if (!CreatePipe(&readPipeRaw, &writePipeRaw, &security, 0)) {
+        return false;
     }
-    std::sort(keys.begin(), keys.end());
-    keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+
+    UniqueHandle readPipe(readPipeRaw);
+    UniqueHandle writePipe(writePipeRaw);
+    SetHandleInformation(readPipe.Get(), HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdOutput = writePipe.Get();
+    startup.hStdError = writePipe.Get();
+    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+    PROCESS_INFORMATION process{};
+
+    std::wstring commandLine = L"\"" + executable + L"\" " + arguments;
+    std::vector<wchar_t> mutableCommand(
+        commandLine.begin(), commandLine.end());
+    mutableCommand.push_back(L'\0');
+
+    const BOOL started = CreateProcessW(
+        nullptr,
+        mutableCommand.data(),
+        nullptr,
+        nullptr,
+        TRUE,
+        CREATE_NO_WINDOW,
+        nullptr,
+        nullptr,
+        &startup,
+        &process);
+
+    if (!started) {
+        return false;
+    }
+
+    UniqueHandle processHandle(process.hProcess);
+    UniqueHandle threadHandle(process.hThread);
+
+    // The parent must close its write end or ReadFile will never see EOF.
+    writePipe = UniqueHandle();
+
+    output.clear();
+    std::array<char, 4096> buffer{};
+    DWORD read = 0;
+    while (ReadFile(
+               readPipe.Get(),
+               buffer.data(),
+               static_cast<DWORD>(buffer.size()),
+               &read,
+               nullptr) &&
+           read > 0) {
+        output.append(buffer.data(), read);
+    }
+
+    WaitForSingleObject(processHandle.Get(), INFINITE);
+
+    DWORD exitCode = 1;
+    if (!GetExitCodeProcess(processHandle.Get(), &exitCode)) {
+        return false;
+    }
+    return exitCode == 0;
+}
+
+[[nodiscard]] std::vector<CdrecordScanEntry> ScanCdrecordDevices() {
+    std::vector<CdrecordScanEntry> entries;
+
+    std::array<wchar_t, MAX_PATH> modulePath{};
+    const DWORD moduleLength = GetModuleFileNameW(
+        nullptr,
+        modulePath.data(),
+        static_cast<DWORD>(modulePath.size()));
+    if (moduleLength == 0 || moduleLength >= modulePath.size()) {
+        return entries;
+    }
+
+    std::filesystem::path cdrecord =
+        std::filesystem::path(modulePath.data()).parent_path() /
+        L"tools" / L"cdrecord.exe";
+    if (!std::filesystem::is_regular_file(cdrecord)) {
+        return entries;
+    }
+
+    std::string output;
+    if (!RunProcessCapture(cdrecord.wstring(), L"-scanbus", output)) {
+        return entries;
+    }
+
+    // Example:
+    // 1,0,0   100) 'ASUS    ' 'SDRW-08U9M-U    ' 'B201' Removable CD-ROM
+    static const std::regex linePattern(
+        R"(^\s*(\d+,\d+,\d+)\s+\d+\)\s+'([^']*)'\s+'([^']*)'\s+'([^']*)')",
+        std::regex::icase);
+
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line)) {
+        std::smatch match;
+        if (!std::regex_search(line, match, linePattern)) {
+            continue;
+        }
+
+        CdrecordScanEntry entry;
+        entry.address = match[1].str();
+        entry.vendor = NormalizeInquiryField(match[2].str());
+        entry.product = NormalizeInquiryField(match[3].str());
+        entry.revision = NormalizeInquiryField(match[4].str());
+        entries.push_back(std::move(entry));
+    }
+
+    return entries;
+}
+void AssignCdrecordAddresses(std::vector<OpticalDrive>& drives) {
+    const std::vector<CdrecordScanEntry> scanned = ScanCdrecordDevices();
+    std::vector<bool> used(scanned.size(), false);
 
     for (OpticalDrive& drive : drives) {
-        if (!drive.scsiAddressValid) {
-            continue;
+        drive.cdrecordDevice.clear();
+
+        const std::string vendor = NormalizeInquiryField(drive.vendor);
+        const std::string product = NormalizeInquiryField(drive.product);
+        const std::string revision = NormalizeInquiryField(drive.firmware);
+
+        // First try an exact vendor/product/revision match.
+        for (std::size_t index = 0; index < scanned.size(); ++index) {
+            if (used[index]) {
+                continue;
+            }
+            const CdrecordScanEntry& candidate = scanned[index];
+            if (candidate.vendor == vendor &&
+                candidate.product == product &&
+                candidate.revision == revision) {
+                drive.cdrecordDevice = candidate.address;
+                used[index] = true;
+                break;
+            }
         }
-        const auto match = std::lower_bound(keys.begin(), keys.end(), drive.scsiBusKey);
-        if (match == keys.end() || *match != drive.scsiBusKey) {
-            continue;
+
+        // Some USB bridges do not expose the same revision through both APIs.
+        // Fall back to vendor/product if the exact match failed.
+        if (drive.cdrecordDevice.empty()) {
+            for (std::size_t index = 0; index < scanned.size(); ++index) {
+                if (used[index]) {
+                    continue;
+                }
+                const CdrecordScanEntry& candidate = scanned[index];
+                if (candidate.vendor == vendor &&
+                    candidate.product == product) {
+                    drive.cdrecordDevice = candidate.address;
+                    used[index] = true;
+                    break;
+                }
+            }
         }
-        const std::size_t adapter = static_cast<std::size_t>(
-            std::distance(keys.begin(), match));
-        if (adapter > 255) {
-            continue;
-        }
-        drive.cdrecordDevice = "SPTI:" + std::to_string(adapter) + "," +
-            std::to_string(drive.scsiTarget) + "," +
-            std::to_string(drive.scsiLun);
     }
 }
 

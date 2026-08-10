@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(DreamcastBurner VERSION 0.2.0 LANGUAGES C CXX RC)
+project(DreamcastBurner VERSION 0.3.0 LANGUAGES C CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "Dreamcast Burner is a native Windows application. Configure it on Windows.")

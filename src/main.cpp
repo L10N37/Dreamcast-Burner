@@ -532,28 +532,34 @@ void DrawApp(
             } else if (!writerSupported) {
                 ImGui::TextDisabled("The selected optical drive cannot write CD-R media.");
             } else if (!backendReady) {
-                ImGui::TextDisabled("Could not map this drive to cdrecord's SPTI backend.");
+                ImGui::TextDisabled("Could not map this drive to cdrecord. Press Refresh and check the Burn log.");
             }
         }
 
-        if (!burn.log.empty()) {
-            if (burn.stage == BurnStage::Failed &&
-                state.lastBurnStage != BurnStage::Failed) {
-                ImGui::SetNextItemOpen(true);
-            }
-            if (ImGui::CollapsingHeader("Burn log")) {
-                if (ImGui::Button("Copy log")) {
-                    ImGui::SetClipboardText(burn.log.c_str());
-                }
-                ImGui::BeginChild(
-                    "BurnLogText",
-                    ImVec2(0.0F, 145.0F),
-                    ImGuiChildFlags_Borders,
-                    ImGuiWindowFlags_HorizontalScrollbar);
-                ImGui::TextUnformatted(burn.log.c_str());
-                ImGui::EndChild();
-            }
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::TextDisabled("BURN LOG");
+        ImGui::SameLine();
+
+        ImGui::BeginDisabled(burn.log.empty());
+        if (ImGui::SmallButton("Copy log")) {
+            ImGui::SetClipboardText(burn.log.c_str());
         }
+        ImGui::EndDisabled();
+
+        ImGui::BeginChild(
+            "BurnLogText",
+            ImVec2(0.0F, 145.0F),
+            ImGuiChildFlags_Borders,
+            ImGuiWindowFlags_HorizontalScrollbar);
+
+        if (burn.log.empty()) {
+            ImGui::TextDisabled("CDIrip / cdrecord output will appear here.");
+        } else {
+            ImGui::TextUnformatted(burn.log.c_str());
+        }
+
+        ImGui::EndChild();
         state.lastBurnStage = burn.stage;
 
         if (ImGui::BeginPopupModal(

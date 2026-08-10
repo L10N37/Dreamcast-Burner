@@ -8,3 +8,4 @@ release/
 CMakeCache.txt
 CMakeFiles/
 .vscode/
+*.old
