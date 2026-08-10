@@ -518,7 +518,10 @@ void BurnEngine::Run(BurnRequest request) {
     const std::vector<std::wstring> extractArguments = {
         request.cdiPath,
         temporary.path.wstring(),
-        L"-cdrecord",
+        // Match DCDIB's all-layout extraction behaviour on Windows:
+        // force data tracks to ISO, but do NOT use CDIrip's -cdrecord
+        // preset because that also enables -cutall and trims audio tracks.
+        L"-iso",
     };
     const ProcessResult extraction = RunHiddenProcess(
         cdirip,

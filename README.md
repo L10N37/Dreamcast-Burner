@@ -11,7 +11,7 @@ The application does **not** implement its own CD recording engine.
 
 Instead, Dreamcast Burner acts as a GUI / frontend / wrapper around **CDIrip** and **cdrecord**, handling the workflow and presenting their functionality through a simple Windows interface.
 
-**Current version: 0.2.0**
+**Current version: 0.3.0**
 
 ---
 
@@ -28,6 +28,8 @@ Instead, Dreamcast Burner acts as a GUI / frontend / wrapper around **CDIrip** a
 * Checks the disc before starting a burn.
 * Dreamcast CDI structure detection.
 * Supports multi-session/self-boot Dreamcast CDI images.
+* Supports common Data+Data and Audio+Data Dreamcast self-boot layouts.
+* Uses the installed cdrecord backend's real device scan to map multiple optical writers reliably.
 * Automatically extracts CDI sessions and tracks using CDIrip.
 * Automatically invokes cdrecord with the required track/session parameters.
 * Burn speed selection based on the capabilities exposed by the drive/backend.
