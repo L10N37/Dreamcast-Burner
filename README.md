@@ -1,5 +1,6 @@
 ![Dreamcast Burner](Images/dreamcastburner.png)
-
+![Dreamcast Burner](Images/1.png)
+![Dreamcast Burner](Images/2.png)
 # Dreamcast Burner
 
 **Dreamcast Burner** is a native Windows GUI for burning Sega Dreamcast **DiscJuggler CDI images** to CD-R.
