@@ -1,0 +1,69 @@
+# @(#)star.dfl	1.6 19/09/27 Copyright 2003-2018 J. Schilling
+#
+# This file is /etc/default/star
+#
+
+#
+# Uncomment this to set star's default FIFO size (e.g. the value that is used
+# when no fs= option is present on the star command line).
+#
+#STAR_FIFOSIZE=		32m
+
+#
+# Uncomment this to set star's MAX FIFO size.
+# This tag may be used to limit the FIFO size used by star to a certain value
+# even if the fs= option on the command line would request for more FIFO.
+# This makes sense if you like to have a unique backup script that requests
+# e.g. 256 MB if FIFO but one of the backup client machines only has 128 MB
+# of RAM.
+#
+#STAR_FIFOSIZE_MAX=	100m
+
+#
+# In former times, enabling fsync() for each extracted file was only a problem
+# on platforms with extremely inefficient filesystem buffer cache (e.g. Linux).
+# With UFS on Solaris, enabling fsync() for each extracted file makes tar
+# extraction approx. 10% slower. With ext4 on Linux, this makes tar extraction
+# approx. 400% slower and with btrfs on Linux it makes tar extraction approx.
+# 2000% slower.
+#
+# Now on Solaris, we have ZFS and ZFS implements transactional filesystem
+# safety, but as a result of it's copy on write concepts, it is very expensive
+# if we request a specific state of the filesystem at a given time. With ZFS
+# on Solaris, enabling fsync() for each extracted file makes tar extraction
+# approx. 400% slower.
+#
+# If you are on a platform with a fair filesystem buffer performance
+# (e.g. Solaris) and do not use ZFS, you should comment out the next statement
+# that switches off fsync() by default. Only by enabling fsync() for each
+# extracted file, star may tell whether a file extraction has been successful.
+#
+STAR_FSYNC=N
+
+#
+# If you are frequently doing administrative work and you know that you do not
+# extract alien tar archives, you may uncomment the following line to tell star
+# to extract potentially insecure links by default. Since this sets a global
+# default, it is recommended to rather use a user specific default via the
+# environment.
+#
+#STAR_SECURE_LINKS=N
+
+#
+# Compatibility entries for Sun's tar. There are up to four entries per line:
+#
+#	1)	The device name
+#	2)	The blocking factor in units of 512 bytes
+#	3)	The max media size in 1024 byte units 
+#		0 means unlimited (no multi volume handling) 
+#	4)	Whether this is a tape or not ('n' or 'N' means no tape).
+#
+#	   device     		block    size	istape
+archive0=/dev/rmt/0		20	0
+archive1=/dev/rmt/0n		20	0
+archive2=/dev/rmt/1		20	0
+archive3=/dev/rmt/1n		20	0
+archive4=/dev/rmt/0		126	0
+archive5=/dev/rmt/0n		126	0
+archive6=/dev/rmt/1		126	0
+archive7=/dev/rmt/1n		126	0

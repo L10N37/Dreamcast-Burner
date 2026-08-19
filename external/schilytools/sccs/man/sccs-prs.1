@@ -1,0 +1,790 @@
+'\" te
+.\" @(#)sccs-prs.1	1.40 20/08/05 Copyright 2007-2020 J. Schilling
+.\" Copyright (c) 1999, Sun Microsystems, Inc.
+.\" CDDL HEADER START
+.\"
+.\" The contents of this file are subject to the terms of the
+.\" Common Development and Distribution License ("CDDL"), version 1.0.
+.\" You may use this file only in accordance with the terms of version
+.\" 1.0 of the CDDL.
+.\"
+.\" A full copy of the text of the CDDL should have accompanied this
+.\" source.  A copy of the CDDL is also available via the Internet at
+.\" http://www.opensource.org/licenses/cddl1.txt
+.\"
+.\" When distributing Covered Code, include this CDDL HEADER in each
+.\" file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+.\" If applicable, add the following below this CDDL HEADER, with the
+.\" fields enclosed by brackets "[]" replaced with your own identifying
+.\" information: Portions Copyright [yyyy] [name of copyright owner]
+.\"
+.\" CDDL HEADER END
+.if t .ds a \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'a
+.if t .ds o \v'-0.55m'\h'0.00n'\z.\h'0.45n'\z.\v'0.55m'\h'-0.45n'o
+.if t .ds u \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'u
+.if t .ds A \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'A
+.if t .ds O \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'O
+.if t .ds U \v'-0.77m'\h'0.30n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.75n'U
+.if t .ds s \\(*b
+.if t .ds S SS
+.if n .ds a ae
+.if n .ds o oe
+.if n .ds u ue
+.if n .ds s sz
+.TH sccs-prs 1 "2020/08/05" "SunOS 5.11" "User Commands"
+.SH NAME
+sccs-prs, prs \- display selected portions of an SCCS history
+.SH SYNOPSIS
+.LP
+.nf
+.B "/usr/ccs/bin/prs \c
+.RB [ -ael "] \c
+.RB [ -c\c
+.IR date-time "] \c
+.RB [ -d\c
+.IR dataspec "]
+.br
+.RB "    [" -q\c
+.RI [ nsedelim "]] \c
+.RB [ -r\c
+.IR sid "]\c
+.br
+.RB "    [" \-X\c
+.IR extended-options "] \c
+.RB [ -N\c
+.IR bulk-spec "] \c
+.IR s.filename ...
+.fi
+
+.SH DESCRIPTION
+
+.LP
+The
+.B prs
+utility displays part or all of the
+.B SCCS
+file (see 
+.BR sccsfile (4))
+in a user supplied format.
+.LP
+The output is based on data from the
+.BR s. files
+that is first converted into a binary format and later converted back into text.
+
+.LP
+If a directory name is used in place of the
+.I s.filename
+argument, the
+.B prs
+command applies to all
+.BR s. files
+in that directory. Unreadable
+.BR s. files
+produce an error; processing continues with the next file (if any). The use of
+.RB ` \(mi '
+as the
+.I s.filename
+argument indicates that the names of files are to be read from the
+standard input, one
+.BR s. file
+per line.
+
+.SH OPTIONS
+
+.LP
+In the absence of options,
+.B prs
+displays the delta table (version log). In the absence of
+.BR -d ,
+or
+.BR -l ,
+.B prs
+displays the entry for each delta indicated by the other options.
+
+.br
+.ne 3
+.TP 13
+.B -a
+Includes all deltas, including those marked as removed (see 
+.BR sccs-rmdel (1)).
+
+.br
+.ne 3
+.TP
+.B -e
+Requests information for all deltas created
+.I earlier
+than, and including, the delta indicated with
+.B -r
+or
+.BR -c .
+
+.br
+.ne 3
+.TP
+.B -l
+Requests information for all deltas created
+.I later
+than, and including, the delta indicated with
+.B -r
+or
+.BR -c .
+
+.br
+.ne 3
+.TP
+.BI -c date-time
+Either options
+.B \-e
+or
+.B \-l
+must be used with this option. 
+.BI \-c date-time
+displays information on the deltas checked in either prior to and including the
+date and time indicated by the
+.I date-time
+argument (option
+.BR \-e );
+or later than and including the date and time indicated (option
+.BR \-l ).
+.I date-time
+takes the form:
+.sp
+.IR " yy" [ mm [ dd [\c
+.IR hh [ mm [ ss ]\|]\|]\|]\|]
+.sp
+Units omitted from the indicated date and time default to their maximum
+possible values; that is
+.B \-c7502
+is equivalent to
+.BR "\-c750228235959" .
+Any number of non-numeric characters may separate the various 2 digit
+components.
+If white-space characters occur, the
+.I date-time
+specification must be quoted. Values of
+.I yy
+in the range
+.BR 69 \(mi 99
+refer to the twentieth century.
+Values in the range of
+.BR 00 \(mi 68
+refer to the twenty-first century.
+.sp
+A
+.I date-time
+specification in the form:
+.sp
+.IR " yyyy" /[ mm [ dd [\c
+.IR hh [ mm [ ss ]\|]\|]\|]\|]
+.sp
+refers to a 4-digit year and allows to specify a year outside the
+range
+.BR 1969 \(mi 2068 .
+
+.br
+.ne 3
+.TP
+.BI -d dataspec
+Produce a report according to the indicated data specification.
+.I dataspec
+consists of a (quoted) text string that includes embedded
+data keywords of the form:
+.RB ` :\c
+.IB key :\c
+\&'
+(see
+.BR "Data Keywords" ,
+below).
+.B prs
+expands these keywords in the output it produces. To specify a
+.B TAB
+character in the output, use
+.BR \et ;
+to specify a NEWLINE in the output, use
+.BR \en \&. 
+
+.br
+.ne 3
+.TP
+.BI -r sid
+Specifies the
+.B SCCS
+delta
+.B ID
+.RB ( SID )
+of the delta for which information is desired. If no
+.B SID
+is specified, the most recently created delta is used.
+
+.br
+.ne 3
+.TP
+.BI -q\fR[ nsedelim\fR]
+Enable
+.B NSE
+mode.
+If
+.B NSE
+mode is enabled, several
+.B NSE
+related extensions may be used.
+In this release, the value of
+.I nsedelim
+is ignored.
+.sp
+This option is an undocumented
+.B \s-1SUN\s+1
+extension that does not exist in historic
+.B sccs 
+implementations.
+
+.sp
+.ne 3
+.TP
+.BI -N bulk-spec
+Processes a bulk of SCCS history files.
+This option allows to do an efficient mass processing of SCCS history files.
+.sp
+The
+.I bulk-spec
+parameter is composed from an optional list of
+.B flag
+parameters followed by an optional
+.B path
+specifier.
+.sp
+The following flag types are supported:
+.RS
+.TP 10
+.B ++
+If
+.I bulk-spec
+is preceded by a
+.BR `++' ,
+.BR prs (1)
+expects to process filenames that are prepended by a plus sign,
+the related
+.B SID
+and another plus sign following the form:
+.sp
+.BI "    +" sid +\c
+.I filename
+.sp
+This permits each file to be retrieved with an individual
+.BR SID .
+.TP
+.B space
+This is a placeholder dummy flag that allows to use a prepared string for
+the 
+.B \-N
+option and to replace the space character by one of the supported flags
+on demand.
+.LP
+.ne 4
+The following path specifier types are supported:
+.TP 10
+.B \-N
+The file name parameters to the
+.B prs
+command are not
+.I s.filename
+files but the names of the g-files.
+The
+.I s.filename
+names are automatically derived from the g-file names by prepending
+.B s.
+to the last path name component.
+Both,
+.I s.filename
+and the g-file are in the same directory.
+.TP
+.B \-Ns.
+The file name parameters to the
+.B prs
+command are
+.I s.filename
+files.
+The the g-files names are automatically derived by removing
+.B s.
+from the beginning of last path name component of the
+.IR s.filename.
+Both,
+.I s.filename
+and the g-file are in the same directory.
+.TP
+.BI \-N dir
+The file name parameters to the
+.B prs
+command are not
+.I s.filename
+files but the names of the g-files.
+The
+.I s.filename
+names are put into directory
+.IR dir ,
+the names are automatically derived from the g-file names by prepending
+.IB dir /s.
+to the last path name component.
+.TP
+.BI \-N dir /s.
+The file name parameters to the
+.B prs
+command are
+.I s.filename
+files in directory
+.IR dir .
+The the g-files names are automatically derived by removing
+.IB dir /s.
+from the beginning of last path name component of the
+.IR s.filename.
+.PP
+A typical value for
+.I dir
+is
+.BR SCCS .
+.PP
+In order to overcome the limited number of
+.BR exec (2)
+arguments, it is recommended to use
+.RB ` \(mi \&'
+as the file name parameter for
+.BR prs (1)
+and to send a list of path names to
+.BR stdin .
+.PP
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.RE
+
+.br
+.ne 3
+.TP
+.BI \-X extended\-options
+Specify extended options. The argument
+.I extended\-options
+may be a comma separated list of extended option names.
+.sp
+The following extended options are supported, they may be abbreviated as long
+ad the abbreviation is still unique. Options with parameter may not be
+abbreviated.
+.sp
+.RS
+.TP
+.B 0
+When reading filenames from
+.BR stdin ,
+triggered by a file name argument
+.RB ` - ',
+the filename separator is a
+.B null byte
+instead of a
+.BR newline .
+This allows to use long lists with arbitrary filenames.
+.TP
+.B help
+Print a short online help for available options.
+.PP
+The
+.B \-X
+option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.RE
+
+.br
+.ne 3
+.TP
+.PD 0
+.B \-V
+.TP
+.B \-version
+.TP
+.B \-\-version
+.PD
+Prints the
+.B prs
+version number string and exists.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.SH USAGE
+
+.LP
+Usage of
+.B prs
+is described below.
+.sp
+
+.SS Data Keywords
+
+.LP
+Data keywords specify which parts of an
+.B SCCS
+file are to be retrieved. All parts of an
+.B SCCS
+file (see 
+.BR sccsfile (4))
+have an associated data keyword. A data keyword may appear any number
+of times in a data specification argument to
+.BR -d .
+These data keywords are listed in the table below: 
+
+.LP
+.in +2
+.nf
+
+.fi
+.in -2
+.sp
+
+.LP
+
+.sp
+.if n .if !\nh .RS -2i
+.TS
+tab();
+lw(.45i) lw(1.64i) lw(.75i) lw(1.62i) lw(.65i)
+lw(.45i) lw(1.64i) lw(.75i) lw(1.62i) lw(.65i)
+.
+\fIKeyword\fR\fIData Item\fRT{
+\fIFile Section*\fR
+T}\fIValue\fR\fIFormat\fR**
+
+\fB:A:\fRA form of \fBwhat\fR string:N/A\fB:Z::Y: :M: :I::Z:\fRS
+\fB:AC:\fRCMF validation programF\fItext\fRS
+\fB:B:\fRbranch numberD\fInnnn\fRS
+\fB:BD:\fRbodyB\fItext\fRM
+\fB:BF:\fRbranch flagF\fByes\fR or \fBno\fRS
+\fB:CB:\fRceiling boundaryF\fB:R:\fRS
+\fB:C:\fRcomments for deltaD\fItext\fRM
+\fB:D:\fRdate delta createdD\fB:Dy:/:Dm:/:Dd:\fRS
+\fB:d:\fRdate delta createdD\fB:DY:/:Dm:/:Dd:\fRS
+\fB:D_:\fRdate delta createdD\fB:DY:-:Dm:-:Dd:\fRS
+\fB:Dd:\fRday delta createdD\fInn\fRS
+\fB:Dg:\fRdeltas ignored (seq #)D\fB:DS: :DS:\fR\|.\|.\|.S
+\fB:DI:\fRT{
+seq\-no.\ of\ deltas included,\ excluded, ignored
+T}D\fB:Dn:/:Dx:/:Dg:\fRS
+\fB:DL:\fRdelta line statisticsD\fB:Li:/:Ld:/:Lu:\fRS
+\fB:Dm:\fRmonth delta createdD\fInn\fRS
+\fB:Dn:\fRdeltas included (seq #)D\fB:DS: :DS:\fR\|.\|.\|.S
+\fB:DP:\fRT{
+predecessor\ delta seq-no.
+T}D\fInnnn\fRS
+\fB:Ds:\fRdefault SIDF\fB:I:\fRS
+\fB:DS:\fRdelta sequence numberD\fInnnn\fRS
+\fB:Dt:\fRdelta informationD\fB:DT: :I: :D: :T: :P: :DS: :DP:\fRS
+\fB:DT:\fRdelta typeD\fBD\fR or \fBR\fRS
+\fB:Dx:\fRdeltas excluded (seq #)D\fB:DS:\fR \|.\|.\|.S
+\fB:Dy:\fRyear delta createdD\fInn\fRS
+\fB:DY:\fRyear delta createdD\fInnnn\fRS
+\fB:F:\fR\fBs.\fRfile nameN/A\fItext\fRS
+\fB:G:\fRfile nameN/A\fItext\fRS
+\fB:FB:\fRfloor boundaryF\fB:R:\fRS
+\fB:FD:\fRfile descriptive textC\fItext\fRM
+\fB:FL:\fRflag listF\fItext\fRM
+\fB:GB:\fRgotten bodyB\fItext\fRM
+\fB:Gp:\fRinitial pathG\fItext\fRS
+\fB:Gr:\fRunified randomG\fItext\fRS
+\fB:I:\fRSCCS delta ID (SID)D\fB:R:.:L:.:B:.:S:\fRS
+\fB:J:\fRjoint edit flagF\fByes\fR or \fBno\fRS
+\fB:KF:\fRT{
+keyword\ error/warning flag
+T}F\fByes\fR or \fBno\fRS
+\fB:L:\fRlevel numberD\fInnnn\fRS
+\fB:Ld:\fRlines deleted by deltaD\fInnnnn\fRS
+\fB:Li:\fRT{
+lines\ inserted\ by delta
+T}D\fInnnnn\fRS
+\fB:LK:\fRlocked releasesF\fB:R:\fR\|.\|.\|.S
+\fB:Lu:\fRT{
+lines\ unchanged\ by delta
+T}D\fInnnnn\fRS
+\fB:M:\fRmodule nameF\fItext\fRS
+\fB:MC:\fRCMF validation flagF\fByes\fR or \fBno\fRS
+\fB:MF:\fRMR validation flagF\fByes\fR or \fBno\fRS
+\fB:MP:\fRMR validation programF\fItext\fRS
+\fB:MR:\fRMR numbers for deltaD\fItext\fRM
+\fB:ND:\fRnull delta flagF\fByes\fR or \fBno\fRS
+\fB:Q:\fRuser defined keywordF\fItext\fRS
+\fB:P:\fRuser who created deltaD\fIusername\fRS
+\fB:PN:\fR\fBs.\fRfile's pathnameN/A\fItext\fRS
+\fB:R:\fRrelease numberD\fInnnn\fRS
+\fB:S:\fRsequence numberD\fInnnn\fRS
+\fB:SX:\fRSID specific extensionsD\fItext\fRM
+\fB:T:\fRtime delta createdD\fB:Th:::Tm:::Ts:\fRS
+\fB:Th:\fRhour delta createdD\fInn\fRS
+\fB:Tm:\fRminutes delta createdD\fInn\fRS
+\fB:Ts:\fRseconds delta createdD\fInn\fRS
+\fB:UN:\fRuser namesU\fItext\fRM
+\fB:W:\fRA form of \fBwhat\fR stringN/A\fB:Z::M:\et:I:\fRS
+\fB:Y:\fRmodule type flagF\fItext\fRS
+\fB:Z:\fR\fBwhat\fR string delimiterN/A\fB@(#)\fRS
+.TE
+.if n .if !\nh .RE
+
+.LP
+.nf
+*B = body, D = delta table, F = flags, G = gl. metadata, U = user names
+.fi
+.LP
+**S = simple format, M = multi-line format
+.sp
+
+.SH EXAMPLES
+.LP
+.B Example 1
+Displaying delta entries
+
+.LP
+The following command:
+
+.LP
+.in +2
+.nf
+example% \c
+.B
+/usr/ccs/bin/prs -e -d":I:\et:P:" program.c
+.fi
+.in -2
+
+.LP
+produces:
+
+.LP
+.in +2
+.nf
+1.6	username
+1.5	username
+\&.\|.\|.
+.fi
+.in -2
+.sp
+
+.SH ENVIRONMENT VARIABLES
+.sp
+.LP
+See
+.BR environ (5)
+for descriptions of the following environment variables that affect the
+execution of
+.BR prs (1):
+.BR LANG ,
+.BR LC_ALL ,
+.BR LC_COLLATE ,
+.BR LC_CTYPE ,
+.BR LC_MESSAGES ,
+and
+.BR NLSPATH .
+
+.br
+.ne 4
+.TP
+.B SCCS_NO_HELP
+If set,
+.BR prs (1)
+will not automatically call
+.BR help (1)
+with the SCCS error code in order to print a more helpful
+error message. Scripts that depend on the exact error messages
+of SCCS commands should set the environment variable
+.B SCCS_NO_HELP
+and set
+.BR LC_ALL=C .
+
+.SH EXIT STATUS
+.sp
+.LP
+The following exit values are returned:
+.sp
+.ne 3
+.TP 5
+.B 0
+Successful completion.
+.sp
+.ne 3
+.TP
+.B 1
+An error occurred.
+
+.SH FILES
+.sp
+.ne 3
+.TP 15n
+.BI s. file
+.B SCCS
+history file, see
+.BR sccsfile (4).
+
+.sp
+.ne 3
+.TP
+.B /tmp/pr?????
+temporary file
+
+.br
+.ne 3
+.TP
+.B dump.core
+If the file
+.B dump.core
+exists in the current directory and a fatal signal is received, a coredump
+is initiated via
+.BR abort (3).
+
+.SH ATTRIBUTES
+
+.LP
+See 
+.BR attributes (5)
+for descriptions of the following attributes:
+.sp
+
+.LP
+
+.sp
+.TS
+tab() box;
+cw(2.75i) |cw(2.75i) 
+lw(2.75i) |lw(2.75i) 
+.
+ATTRIBUTE TYPEATTRIBUTE VALUE
+_
+AvailabilitySUNWsprot
+_
+Interface StabilityStandard
+.TE
+
+.SH SEE ALSO
+.nh
+.LP
+.BR sccs (1),
+.BR sccs\-add (1),
+.BR sccs\-admin (1),
+.BR sccs\-branch (1),
+.BR sccs\-cdc (1),
+.BR sccs\-check (1),
+.BR sccs\-clean (1),
+.BR sccs\-comb (1),
+.BR sccs\-commit (1),
+.BR sccs\-create (1),
+.BR sccs\-cvt (1),
+.BR sccs\-deledit (1),
+.BR sccs\-delget (1),
+.BR sccs\-delta (1),
+.BR sccs\-diffs (1),
+.BR sccs\-edit (1),
+.BR sccs\-editor (1),
+.BR sccs\-enter (1),
+.BR sccs\-fix (1),
+.BR sccs\-get (1),
+.BR sccs\-help (1),
+.BR sccs\-histfile (1),
+.BR sccs\-info (1),
+.BR sccs\-init (1),
+.BR sccs\-istext (1),
+.BR sccs\-ldiffs (1),
+.BR sccs\-log (1),
+.BR sccs\-print (1),
+.BR sccs\-prt (1),
+.BR sccs\-rcs2sccs (1),
+.BR sccs\-remove (1),
+.BR sccs\-rename (1),
+.BR sccs\-rmdel (1),
+.BR sccs\-root (1),
+.BR sccs\-sact (1),
+.BR sccs\-sccsdiff (1),
+.BR sccs\-status (1),
+.BR sccs\-tell (1),
+.BR sccs\-unedit (1),
+.BR sccs\-unget (1),
+.BR sccs\-val (1),
+.BR bdiff (1), 
+.BR diff (1), 
+.BR what (1),
+.BR sccschangeset (4),
+.BR sccsfile (4),
+.BR attributes (5),
+.BR environ (5),
+.BR standards (5).
+.hy 14
+
+.SH DIAGNOSTICS
+.LP
+Use the SCCS
+.B help
+command for explanations (see 
+.BR sccs-help (1)).
+
+.SH AUTHORS
+The
+.B SCCS
+suite was originally written by Marc J. Rochkind at Bell Labs in 1972.
+Release 4.0 of
+.BR SCCS ,
+introducing new versions of the programs
+.BR admin (1),
+.BR get (1),
+.BR prt (1),
+and
+.BR delta (1)
+was published on February 18, 1977; it introduced the new text based
+.B SCCS\ v4
+history file format (previous
+.B SCCS
+releases used a binary history file format).
+The
+.B SCCS
+suite
+was later maintained by various people at AT&T and Sun Microsystems.
+Since 2006, the
+.B SCCS
+suite is maintained by J\*org Schilling.
+
+.br
+.ne 7
+.SH "SOURCE DOWNLOAD"
+A frequently updated source code for the
+.B SCCS
+suite is included in the
+.B schilytools
+project and may be retrieved from the
+.B schilytools
+project at Sourceforge at:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/
+.LP
+The download directory is:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/files/
+.LP
+Check for the
+.B schily\-*.tar.bz2
+archives.
+.LP
+Less frequently updated source code for the
+.B SCCS
+suite is at:
+.LP
+.B
+    http://sourceforge.net/projects/sccs/files/
+.LP
+Separate project informations for the
+.B SCCS
+project may be retrieved from:
+.LP
+.B
+    http://sccs.sf.net
+.br

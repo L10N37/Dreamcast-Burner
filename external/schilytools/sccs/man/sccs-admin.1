@@ -1,0 +1,1514 @@
+'\" te
+.\" @(#)sccs-admin.1	1.67 20/09/17 Copyright 2007-2020 J. Schilling
+.\"  Copyright (c) 2002, Sun Microsystems, Inc. All Rights Reserved.
+.\" CDDL HEADER START
+.\"
+.\" The contents of this file are subject to the terms of the
+.\" Common Development and Distribution License ("CDDL"), version 1.0.
+.\" You may use this file only in accordance with the terms of version
+.\" 1.0 of the CDDL.
+.\"
+.\" A full copy of the text of the CDDL should have accompanied this
+.\" source.  A copy of the CDDL is also available via the Internet at
+.\" http://www.opensource.org/licenses/cddl1.txt
+.\"
+.\" When distributing Covered Code, include this CDDL HEADER in each
+.\" file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+.\" If applicable, add the following below this CDDL HEADER, with the
+.\" fields enclosed by brackets "[]" replaced with your own identifying
+.\" information: Portions Copyright [yyyy] [name of copyright owner]
+.\"
+.\" CDDL HEADER END
+.if t .ds a \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'a
+.if t .ds o \v'-0.55m'\h'0.00n'\z.\h'0.45n'\z.\v'0.55m'\h'-0.45n'o
+.if t .ds u \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'u
+.if t .ds A \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'A
+.if t .ds O \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'O
+.if t .ds U \v'-0.77m'\h'0.30n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.75n'U
+.if t .ds s \\(*b
+.if t .ds S SS
+.if n .ds a ae
+.if n .ds o oe
+.if n .ds u ue
+.if n .ds s sz
+.TH sccs-admin 1 "2020/09/17" "SunOS 5.11" "User Commands"
+.SH NAME
+sccs-admin, admin \- create and administer SCCS history files
+.SH SYNOPSIS
+.LP
+.LP
+.B /usr/ccs/bin/admin
+.RB [ -bhknoz ]
+.RB [ -a\c
+.IR " username " | " groupid" ]...
+.br
+.RB "    [" -d\c
+.IR " flag" "] ... \c
+.RB [ -e\c
+.IR " username " | " groupid\c
+]...
+.br
+.RB "    [" -f\c
+.IR " flag" [ value "]] ... \c
+.RB [ -i [\c
+.IR "filename" ]]
+.RB [ -m
+.IR mr-list ]
+.br
+.RB "    [" -q\c
+.RI [ nsedelim ]]
+.RB [ -w\c
+.IR %\&W%-string ]
+.br
+.RB "    [" -r\c
+.IR release "] \c
+.RB [ -t [\c
+.IR description-file ]]
+.RB [ -y [\c
+.IR comment ]]
+.br
+.RB "    [" \-X\c
+.IR extended-options ]
+.RB [ -N\c
+.IR bulk-spec ]
+.IR s.filename ...
+
+.SH DESCRIPTION
+.sp
+.LP
+The
+.B admin
+command creates or modifies the flags and other parameters of
+SCCS history files. Filenames of SCCS history files begin with the
+.RB ` s. '
+prefix, and are referred to as
+.BR s. files,
+or ``history'' files.
+.sp
+.LP
+The named
+.BR s. file
+is created if it does not exist already. Its parameters are initialized
+or modified according to the options you specify.  Parameters not specified
+are given default values when the file is initialized, otherwise they
+remain unchanged.
+.sp
+.LP
+If a directory name is used in place of the
+.I s.filename
+argument, the
+.B admin
+command applies to all
+.BR s. files
+in that directory.  Unreadable
+.BR s. files
+produce an error.  The use of
+.RB ` \(mi \&'
+as the
+.I s.filename
+argument indicates that the names of files are to be read from the
+standard input, one
+.BR s. file
+per line.
+.SH OPTIONS
+.sp
+.LP
+The following options are supported:
+.sp
+.ne 3
+.TP
+.BI "-a " "username" "\fR | " groupid
+Adds a user name, or a numerical group
+.BR ID ,
+to the list of users who may check deltas in or out. If the list is empty,
+any user is allowed to do so.
+.sp
+.ne 3
+.TP
+.B -b
+Forces encoding of binary data. Files that contain
+.BR "ASCII NUL" ,
+that contain lines that start with the the SCCS control character
+.B SOH(ASCII 001)
+or that do not end with a
+.BR NEWLINE ,
+are recognized as binary data files when using the
+.B SCCSv4
+history file format. The contents of such files are stored
+in the history file in encoded form. See
+.BR uuencode (1C)
+for details about
+the encoding. This option is normally used in conjunction with
+.B -i
+to force
+.B admin
+to encode initial versions not recognized as containing binary data.
+.sp
+The new 
+.B SCCSv6
+history file format permits to have lines that start with the SCCS control
+character
+.B SOH(ASCII 001)
+and files that do not end with a
+.BR NEWLINE ,
+enforcing the binary file format only if a file contains
+.B "ASCII NUL"
+characters.
+.sp
+.ne 3
+.TP
+.BI "-d " flag
+Deletes the indicated
+.I flag
+from the SCCS file. The
+.B -d
+option may be specified only for existing
+.BR s. files.
+See
+.B -f
+for the list of recognized flags.
+.sp
+.ne 3
+.TP
+.BI "-e " "username" "\fR | " groupid
+Erases a user name or group
+.B ID
+from the list of users allowed to
+make deltas.
+.sp
+.ne 3
+.TP
+.BI "-f " flag "\fR [" value\fR]
+Sets the indicated
+.I flag
+to the (optional)
+.I value
+specified. The following flags are recognized: 
+.RS
+.ne 3
+.TP 7
+.B b
+Enables branch deltas. When
+.B b
+is set, branches can be created using the
+.B -b
+option of the
+.B SCCS get
+command (see
+.BR sccs-get (1)).
+.sp
+.ne 3
+.TP
+.BI c ceil
+Sets a ceiling on the releases that can be checked out.
+.I ceil
+is a number less than or equal to 9999. If
+.B c
+is not set, the ceiling is 9999.
+.sp
+.ne 3
+.TP
+.BI d sid
+Specifies the default delta number, or
+.BR SID ,
+to be used by an
+.B SCCS get
+command.
+.sp
+.ne 3
+.TP
+.BI f floor
+Sets a floor on the releases that can be checked out. The floor is a number
+greater than 0 but less than 9999. If
+.B f
+is not set, the floor is 1.
+.sp
+.ne 3
+.TP
+.BI i\fR[ value\fR]
+Treats the
+.RB ` "No id keywords (cm7)" '
+message issued by an
+.B SCCS get
+or
+.B delta
+command as an error rather than a warning.
+.sp
+If the parameter
+.I value
+to the
+.RB ` i '
+flag is not empty, then it holds a line fragment with keywords
+starting with a
+.RB ` "%" ',
+e.g.
+.br
+.RB "        `" "%\&Z%%\&M%	%\&I% %\&E%" '
+.br
+This line fragment needs to exactly match a part of a line in the file
+and to result in expanded keywords.
+The string must begin with a keyword, and may not have embedded
+.B newline
+characters.
+If no match was found, an attempt to check in a new delta will fail.
+The parameter to the
+.RB ` i '
+flag is a
+.B \s-1SUN\s+1
+extension that was adopted by the
+.B POSIX
+standard.
+.sp
+.ne 3
+.TP
+.B j
+Allow concurrent
+.B get \-e
+calls for editing on the same base
+.B SID
+of an SCCS file.
+This allows multiple concurrent updates to take place on the same
+version of the SCCS file.
+.sp
+.ne 3
+.TP
+.B la
+.TP
+.BI "l " release\fR[ ", " release\fR...]
+Locks the indicated list of releases against deltas.
+An SCCS
+.RB ` "get -e" '
+command fails when applied against a locked release.
+The following syntax is accepted to specify a list:
+.sp
+.nf
+<list> ::= \fBa\fR | <range-list>
+<range-list> ::= <range> | <range-list>, <range>
+<range> ::= <SID>
+.fi
+.sp
+The character
+.B a
+in the
+.I list
+is the equivalent to specifying all releases for the named SCCS file.
+The non-terminal
+.I <SID>
+in
+.I range
+is the delta number of an existing delta associated with the SCCS file.
+.ne 3
+.TP
+.BI m module
+Supplies a value for the module name to which the
+.B %\&M%
+keyword is to expand. If the
+.B m
+flag is not specified, the value assigned is the name of the SCCS file
+with the leading
+.B s.
+removed.
+.sp
+.ne 3
+.TP
+.B n
+Creates empty releases when releases are skipped. These null (empty)
+deltas serve as anchor points for branch deltas.
+.sp
+.ne 3
+.TP
+.BI q value
+Supplies a
+.I value
+to which the
+.B %\&Q%
+keyword is to expand when a read-only version is retrieved with the
+.B SCCS get
+command.
+.sp
+.ne 3
+.TP
+.BI s number
+Specifies how many lines of code are scanned for the SCCS keyword.
+.sp
+This flag is a
+.B \s-1SUN\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.sp
+.ne 3
+.TP
+.BI t type
+Supplies a value for the module type to which the
+.B %\&Y%
+keyword is to expand.
+.sp
+.ne 3
+.TP
+.BI v\fR[ program\fR]
+Specifies a validation
+.I program
+for the
+.B MR
+numbers associated with a new delta. The optional
+.I program
+specifies the name of an
+.B MR
+number validity checking
+.IR program .
+If this flag is set when creating an SCCS file, the
+.B -m
+option must also be used,
+in which case the list of
+.BR MR s
+may be empty.
+.sp
+The
+.B v
+flag and the
+.B z
+flag are mutually exclusive.
+.sp
+.ne 3
+.TP
+.B x
+Enable 
+.B sccs
+extensions that are not implemented in classical 
+.B sccs
+variants. If the
+.RB ` x '
+flag is enabled, the keywords
+.BR %\&d\&% ", " %\&e\&% ", " %\&g\&% 
+and
+.B %\&h\&%
+are expanded even though the
+.RB ` y '
+flag was not set.
+.sp
+This flag is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs 
+implementations. 
+.sp
+This version of SCCS implements compatibility support for a SCO SCCS
+extension that sets the executable bit in the file permissions of a
+gotten file if the
+.BR x -flag
+was set in the history file with no parameter. This version of SCCS
+does not allow to set this variant of the
+.BR x -flag
+in the history file.
+If you like to get executable files from SCCS, set the executable
+bit in the file permissions of the history file.
+
+.br
+.ne 4
+.TP
+.BI y\fR[ value ,\fR[ value\fR]]
+Specifies the SCCS keywords to be expanded. If no
+.I value
+is specified, no keywords will be expanded.
+.sp
+The value
+.RB ` * '
+controls the expansion of the
+.B %\&sccs.include.\c
+.IB filename \&%
+keyword.
+If the letters
+.BR d ", " e ", " g
+or
+.B h
+are present, the related extended keywords are expanded even though the
+.RB ` x '
+flag was not set, see
+.RB ` x '
+flag above.
+.sp
+If
+.I value
+is set to an empty string, no keywords will be expanded and the
+.RB ` "No id keywords (cm7)" '
+message will not be created even though no keyword was expanded.
+.sp
+.BR admin (1)
+automatically disables keyword expansion when creating a SCCSv6 history file
+and a nul byte is seen in the input data.
+.sp
+This flag is a
+.BR \s-1SUN\s+1 / \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs 
+implementations.
+.sp
+The suppressed
+.RB ` "No id keywords (cm7)" '
+message is a 
+.BR \s-1SCHILY\s+1
+extension.
+.br
+.ne 4
+.TP
+.BI z application
+The name of an application for the
+.B CMF
+enhancements.
+.B CMF
+enhancements are currently undocumented and it is
+not known how they are expected to work.
+.sp
+The
+.B v
+flag and the
+.B z
+flag are mutually exclusive.
+.sp
+This flag is a
+.B \s-1SUN\s+1
+extension that does not exist in historic
+.B sccs 
+implementations.
+
+.RE
+
+.sp
+.ne 3
+.TP
+.B -h
+Checks the structure of an existing
+.BR s. file
+(see
+.BR sccsfile (4)),
+and compares a newly computed check-sum with one stored in the
+first line of that file.
+.B -h
+inhibits writing on the file and so nullifies the effect of any other options.
+.sp
+.ne 3
+.TP
+.BI -i\fR[ filename\fR]
+Initializes the history file with text from the indicated file.
+This text constitutes the initial delta, or set of checked-in changes.
+If
+.I filename
+is omitted, the initial text is obtained from the standard input.
+Omitting the
+.B \-i
+option altogether creates an empty
+.BR s. file.
+You can only initialize one
+.BR s. file
+with text using
+.B \-i
+unless you use the bulk option
+.BR \-N .
+The
+.B \-i
+option implies the
+.B \-n
+option.
+.sp
+If you like to initialize more than one
+.BR s. file
+in one call, use the
+.B \-N
+option and specify
+.B \-i.
+.RB ( \-i
+followed by a dot).
+
+.br
+.ne 3
+.TP
+.B -k
+Suppresses expansion of
+.B ID
+keywords when
+.BR admin (1)
+is doing an implicit
+.BR get (1)
+operation because
+.BI  -N+ ...
+was specified.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.br
+.ne 3
+.TP
+.BI "-m " mr-list
+Inserts the indicated Modification Request (MR) numbers into the commentary
+for the initial version. When specifying more than one MR number on the
+command line,
+.I mr-list
+takes the form of a quoted, space-separated list. A warning results if the
+.B v
+flag is not set or the
+.B MR
+validation fails.
+.sp
+.ne 3
+.TP
+.BI -N bulk-spec
+Creates a bulk of new SCCS history files.
+This option allows to do an efficient mass creation of SCCS history files
+and to initialize the SCCS history files from named files that
+are the respective counterpart to the actual SCCS history file.
+.sp
+The
+.I bulk-spec
+parameter is composed from an optional list of
+.B flag
+parameters followed by an optional
+.B path
+specifier.
+.sp
+The following flag types are supported:
+.RS
+.TP 10
+.B \-
+If
+.I bulk-spec
+is preceded by a
+.BR `\-' ,
+.BR admin (1)
+removes the original g-files after the initial history files
+have been created. This flag cannot be used together with
+the
+.RB ` , '
+flag.
+.TP
+.B +
+If
+.I bulk-spec
+is preceded by a
+.BR `+' ,
+.BR admin (1)
+removes the original g-files and replaces them by file content that is
+retrieved by a
+.BR get (1)
+operation on the related
+.BI s. file\fR.
+This flag can be used together with the
+.RB ` , '
+flag.
+.TP
+.B ,
+If
+.I bulk-spec
+is preceded by a
+.BR `,' ,
+.BR admin (1)
+renames the g-file from where the SCCS history file was initialized from
+to
+.B ,name
+similar to what happens with
+.BR "sccs create" .
+It is recommended to let
+.BR admin (1)
+rename the original file as this file usually contains unexpanded keywords
+and as this file usually is writable.
+.TP
+.B space
+This is a placeholder dummy flag that allows to use a prepared string for
+the 
+.B \-N
+option and to replace the space character by one of the supported flags
+on demand.
+.LP
+If
+.B sccs
+is used in forced delta mode where no
+.B sccs edit
+is needed, it is recommended to use no flag character in the
+.I bulk-spec
+in order to retain a writable g-file.
+
+.LP
+The following path specifier types are supported:
+.TP 10
+.B \-N
+The file name parameters to the
+.B admin
+command are not
+.I s.filename
+files but the names of the g-files.
+The
+.I s.filename
+names are automatically derived from the g-file names by prepending
+.B s.
+to the last path name component.
+Both,
+.I s.filename
+and the g-file are in the same directory.
+.TP
+.B \-Ns.
+The file name parameters to the
+.B admin
+command are
+.I s.filename
+files.
+The the g-files names are automatically derived by removing
+.B s.
+from the beginning of last path name component of the
+.IR s.filename.
+Both,
+.I s.filename
+and the g-file are in the same directory.
+.TP
+.BI \-N dir
+The file name parameters to the
+.B admin
+command are not
+.I s.filename
+files but the names of the g-files.
+The
+.I s.filename
+names are put into directory
+.IR dir ,
+the names are automatically derived from the g-file names by prepending
+.IB dir /s.
+to the last path name component.
+.TP
+.BI \-N dir /s.
+The file name parameters to the
+.B admin
+command are
+.I s.filename
+files in directory
+.IR dir .
+The the g-files names are automatically derived by removing
+.IB dir /s.
+from the beginning of last path name component of the
+.IR s.filename.
+.PP
+A typical value for
+.I dir
+is
+.BR SCCS .
+.PP
+In order to overcome the limited number of
+.BR exec (2)
+arguments, it is recommended to use
+.RB ` \(mi \&'
+as the file name parameter for
+.BR admin (1)
+and to send a list of path names to
+.BR stdin .
+If
+.BR admin (1)
+is called via
+.BR sccs (1),
+it is recommended to leave out the
+.RB ` \(mi \&'
+to prevent
+.BR sccs (1)
+from trying to expand the file names from
+.B stdin
+into an arg vector.
+.PP
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.RE
+.sp
+.ne 3
+.TP
+.B -n
+Creates a new SCCS history file.
+.sp
+.ne 3
+.TP
+.B \-o
+Use the original time of the existing file for the delta time
+when creating a new
+.BR s. file.
+In NSE mode, this is the default behavior.
+If
+.BR admin (1)
+is doing an implicit
+.BR get (1)
+operation because
+.BI  -N+ ...
+was specified, the new g-file is also set to the original file
+date.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.sp
+.ne 3
+.TP
+.BI -q\fR[ nsedelim\fR]
+Enable
+.B NSE
+mode.
+If
+.B NSE
+mode is enabled, several
+.B NSE
+related extensions may be used.
+In this release, the value of
+.I nsedelim
+is ignored.
+.sp
+In NSE mode,
+.B admin
+behaves as if the
+.B \-o
+option was specified and never issues a warning about missing
+.BR "id keyword" s.
+.sp
+This option is an undocumented
+.B \s-1SUN\s+1
+extension that does not exist in historic
+.B sccs 
+implementations.
+.sp
+.ne 3
+.TP
+.BI -r release
+Specifies the release for the initial delta.
+.B -r
+may be used only in conjunction with
+.BR -i .
+The initial delta is inserted into release 1 if this option is
+omitted. The level of the initial delta is always
+.BR 1 .
+Initial deltas are named
+.B 1.1
+by default.
+.sp
+.ne 3
+.TP
+.BI -t\fR[ description-file\fR]
+Inserts descriptive text from the file
+.IR description-file .
+When
+.B -t
+is used in conjunction with
+.BR -n ,
+or
+.B -i
+to initialize a new s.file, the
+.I description-file
+must be supplied. When modifying the description for an existing file: a
+.B -t
+option without a
+.I description-file
+removes the descriptive text, if any; a
+.B -t
+option with a
+.I description-file
+replaces the existing text.
+
+.br
+.ne 3
+.TP
+.BI -w %\&W%-string
+The
+.I %\&W%-string
+is used as a replacement for the
+.B %\&W%
+keyword when
+.BR admin (1)
+is doing an implicit
+.BR get (1)
+operation because
+.BI  -N+ ...
+was specified.
+If
+.B \-w
+was not specified, 
+.B %\&W%
+is expanded to
+.BR "%\&Z%%\&M%  %\&I%" ,
+otherwise the argument from
+.B \-w
+is used.
+.sp
+This option is an undocumented
+.B SUN
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.br
+.ne 3
+.TP
+.BI \-X extended\-options
+Specify extended options. The argument
+.I extended\-options
+may be a comma separated list of extended option names.
+.sp
+The following extended options are supported, they may be abbreviated as long
+ad the abbreviation is still unique. Options with parameter may not be
+abbreviated.
+.sp
+.RS
+.TP
+.BI Gp= initial_path
+Set the
+.I initial path
+meta data in the history file.
+If specified with an empty argument, no
+.I initial path
+meta data will appear in the history file.
+This option exists in order to permit
+.BR comb (1)
+to reatain the
+.I initial path
+from the original file.
+If this option was specified, only one file type argument is permitted.
+.TP
+.BI Gr= urand
+Set the
+.I unified random
+meta data in the history file.
+If specified with an empty argument, no
+.I unified random
+meta data will appear in the history file.
+This option exists in order to permit
+.BR comb (1)
+to reatain the
+.I unified random
+from the original file.
+If this option was specified, only one file type argument is permitted.
+.TP
+.BI date= datetime
+Allows to overwrite the usual methods to determine the
+time stamp used for a new delta. This is needed
+to e.g. convert a historic SCCS history into a
+new project oriented bundle history.
+The format of the
+.I datetime
+argument is the same as for cutoff times but nanoseconds and
+a time zone offset are permitted in addition.
+.TP
+.BI gpath= g-path
+Specify a different path to the
+.I g-file
+instead of deriving the path from the
+.B s-file
+using an algorithm that may not apply in a specific case.
+This option is needed to manage the 
+.B changeset
+file.
+.TP
+.B nobulk
+Disables the
+.B \-N
+(bulkmode) filename translations.
+This is needed to disable a
+.B \-N
+option that is automatically added by
+.BR sccs (1)
+in NewMode and would otherwise make it impossible to deal with the
+changeset file 
+.RB  `` .sccs/SCCS/s.changeset ''.
+.TP
+.BI mail= address
+Set
+.I address
+as e-mail address in the delta table for the
+.I SID
+in case the
+.B history file
+has just been created with
+.BR admin .
+.TP
+.B unlink
+If used together with the option
+.BR \-n ,
+this makes the initial release a special release that unlinks (removes) the
+.B g-file
+by using the
+.B get(1)
+command in case the file exists as non-writable file.
+The default
+.B SID
+used in this case is
+.BR 1.0 ,
+in order to permit a
+.B 1.1
+release with file content later in the same history file.
+.TP
+.BI user= name
+Use a different user name for the
+.B programmer
+field in the delta table.
+By the default, the
+.B logname
+is used for this field.
+Using a different name may however later deny the permission
+to modify a delta by programs like
+.BR cdc (1).
+.TP
+.B 0
+When reading filenames from
+.BR stdin ,
+triggered by a file name argument
+.RB ` - ',
+the filename separator is a
+.B null byte
+instead of a
+.BR newline .
+This allows to use long lists with arbitrary filenames.
+.TP
+.B help
+Print a short online help for available options.
+.PP
+The
+.B \-X
+option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.RE
+
+.br
+.ne 3
+.TP
+.PD 0
+.B \-V
+.TP
+.B \-version
+.TP
+.B \-\-version
+.PD
+Prints the
+.B admin
+version number string and exists.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.sp
+.ne 3
+.TP
+.B \-V4
+When used together with
+.B \-i
+or
+.BR \-n ,
+.BR admin (1)
+will create a 
+.B "SCCS v4
+history file instead of the default, that may be
+.BR "SCCS v6" .
+.sp
+.ne 3
+.TP
+.B \-V6
+When used together with
+.B \-i
+or
+.BR \-n ,
+.BR admin (1)
+will create a 
+.B "SCCS v6
+history file instead of a
+.B "SCCS v4
+history file.
+.sp
+.B "SCCS v6
+history files are the default in case that a directory
+.IB projecthome /.sccs/
+has been created before and correcly populated and
+.BR admin (1)
+has been called with the
+.B \-N
+option to select the
+.BR "new mode" .
+.sp
+.B "SCCS v6
+history files are not understood by historic SCCS implementations.
+See
+.BR sccsfile (4)
+for more information on the new features.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.sp
+.ne 3
+.TP
+.BI -y\fR[ comment\fR]
+Inserts the indicated
+.I comment
+in the
+.RB `` Comments: ''
+field for the initial delta. Valid only in conjunction with
+.B -i
+or
+.BR -n .
+If
+.B -y
+option is omitted, a default comment line is inserted that notes the
+date and time the history file was created.
+.sp
+.ne 3
+.TP
+.B -z
+Recomputes the file check-sum and stores it in the first line of the
+.BR s. file.
+.B Caution:
+It is important to verify the contents of the history file (see
+.BR sccs-val (1),
+and the
+.B print
+subcommand in
+.BR sccs (1)),
+since using
+.B -z
+on a truly corrupted file may prevent detection of the error.
+
+.SH EXAMPLES
+.LP
+.B Example 1
+Preventing SCCS keyword expansion
+.sp
+.LP
+In the following example,
+.B 10
+lines of
+.B file
+will be scanned and only the
+.B W,Y,X
+keywords will be interpreted:
+
+.sp
+.in +2
+.nf
+example% \c
+.B
+sccs admin \-fs10 file
+example% \c
+.B
+sccs admin \-fyW,Y,X file
+example% \c
+.B
+get file
+.fi
+.in -2
+.sp
+
+.LP
+.B Example 2
+Preventing SCCS keyword expansion and suppressing the
+.RB ` "No id keywords (cm7)" '
+warning
+.sp
+.LP
+In the following example, no keywords will be interpreted and no
+warning will be generated:
+
+.sp
+.in +2
+.nf
+example% \c
+.B
+sccs admin \-fy file
+example% \c
+.B
+get file
+.fi
+.in -2
+.sp
+
+.LP
+.B Example 3
+Mass entering files with auto-initialization
+.sp
+.LP
+In the following example, all files in the usr/src tree will be put under SCCS
+and the SCCS history files will be put into SCCS sub directories:
+
+.sp
+.in +2
+.nf
+example% \c
+.B
+find usr/src -type f | sccs admin -NSCCS -i.
+.fi
+.in -2
+.sp
+The original g-files will be left untouched.
+
+.LP
+.B Example 4
+Mass entering files with auto-initialization
+.sp
+.LP
+In the following example, all files in the usr/src tree will be put under SCCS
+and the SCCS history files will be put into SCCS sub directories. Each original
+.I file
+will be renamed to
+.I ,file
+after the
+.I file
+has been successfully put under SCCS control:
+
+.sp
+.in +2
+.nf
+example% \c
+.B
+find usr/src -type f | sccs admin -N,SCCS -i.
+.fi
+.in -2
+.sp
+
+.LP
+.B Example 5
+Entering all files in a directory with auto-initialization
+.sp
+.LP
+In the following example, all files in the current directory will be put
+under SCCS and the SCCS history files will be put into the SCCS sub directory:
+
+.sp
+.in +2
+.nf
+example% \c
+.B
+sccs admin -NSCCS -i. .
+.fi
+.in -2
+.sp
+The original g-files will be left untouched.
+
+.SH ENVIRONMENT VARIABLES
+.sp
+.LP
+See
+.BR environ (5)
+for descriptions of the following environment variables that affect the
+execution of
+.BR admin (1):
+.BR LANG ,
+.BR LC_ALL ,
+.BR LC_COLLATE ,
+.BR LC_CTYPE ,
+.BR LC_MESSAGES ,
+and
+.BR NLSPATH .
+
+.LP
+
+.br
+.ne 4
+.TP
+.B SCCS_NO_HELP
+If set,
+.BR admin (1)
+will not automatically call
+.BR help (1)
+with the SCCS error code in order to print a more helpful
+error message. Scripts that depend on the exact error messages
+of SCCS commands should set the environment variable
+.B SCCS_NO_HELP
+and set
+.BR LC_ALL=C .
+.br
+.ne 4
+.TP
+.B SCCS_V6
+If set,
+.BR admin (1)
+by default creates new history files with 
+.B SCCS v6
+encoding.
+
+.SH EXIT STATUS
+.sp
+.LP
+The following exit values are returned:
+.sp
+.ne 2
+.TP 5
+.B 0
+Successful completion.
+.sp
+.ne 2
+.TP
+.B 1
+An error occurred.
+
+.SH FILES
+.sp
+.ne 2
+.TP 15
+.BI e. file
+temporary file to hold an uuencoded version of the
+.B g-file
+in case of an encoded history file
+
+.sp
+.ne 2
+.TP
+.BI s. file
+.B SCCS
+history file, see
+.BR sccsfile (4).
+
+.sp
+.ne 2
+.TP
+.BI SCCS/s. file
+history file in SCCS subdirectory
+
+.sp
+.ne 2
+.TP
+.BI x. file
+temporary copy of the
+.BR s. file;
+renamed to the
+.BR s. file
+after completion.
+
+.sp
+.ne 2
+.TP
+.BI z. file
+temporary lock file contains the binary process id in host byte order
+followed by the host name
+
+.br
+.ne 3
+.TP
+.B dump.core
+If the file
+.B dump.core
+exists in the current directory and a fatal signal is received, a coredump
+is initiated via
+.BR abort (3).
+
+.SH ATTRIBUTES
+.sp
+.LP
+See
+.BR attributes (5)
+for descriptions of the following attributes:
+.sp
+
+.sp
+.TS
+tab() box;
+cw(2.75i) |cw(2.75i) 
+lw(2.75i) |lw(2.75i) 
+.
+ATTRIBUTE TYPEATTRIBUTE VALUE
+_
+AvailabilitySUNWsprot
+_
+Interface StabilityStandard
+.TE
+
+.SH SEE ALSO
+.nh
+.LP
+.BR sccs (1),
+.BR sccs\-add (1),
+.BR sccs\-branch (1),
+.BR sccs\-cdc (1),
+.BR sccs\-check (1),
+.BR sccs\-clean (1),
+.BR sccs\-comb (1),
+.BR sccs\-commit (1),
+.BR sccs\-create (1),
+.BR sccs\-cvt (1),
+.BR sccs\-deledit (1),
+.BR sccs\-delget (1),
+.BR sccs\-delta (1),
+.BR sccs\-diffs (1),
+.BR sccs\-edit (1),
+.BR sccs\-editor (1),
+.BR sccs\-enter (1),
+.BR sccs\-fix (1),
+.BR sccs\-get (1),
+.BR sccs\-help (1),
+.BR sccs\-histfile (1),
+.BR sccs\-info (1),
+.BR sccs\-init (1),
+.BR sccs\-istext (1),
+.BR sccs\-ldiffs (1),
+.BR sccs\-log (1),
+.BR sccs\-print (1),
+.BR sccs\-prs (1),
+.BR sccs\-prt (1),
+.BR sccs\-rcs2sccs (1),
+.BR sccs\-remove (1),
+.BR sccs\-rename (1),
+.BR sccs\-rmdel (1),
+.BR sccs\-root (1),
+.BR sccs\-sact (1),
+.BR sccs\-sccsdiff (1),
+.BR sccs\-status (1),
+.BR sccs\-tell (1),
+.BR sccs\-unedit (1),
+.BR sccs\-unget (1),
+.BR sccs\-val (1),
+.BR bdiff (1), 
+.BR diff (1), 
+.BR what (1),
+.BR sccschangeset (4),
+.BR sccsfile (4),
+.BR attributes (5),
+.BR environ (5),
+.BR standards (5).
+.hy 14
+
+.SH DIAGNOSTICS
+.sp
+.LP
+Use the
+.B SCCS help
+command for explanations (see
+.BR sccs-help (1)).
+.SH WARNINGS
+.sp
+.LP
+The last component of all SCCS filenames must have the
+.RB ` s. '
+prefix. New SCCS files are given mode
+.B 444
+(see
+.BR chmod (1)).
+All writing done by
+.B admin
+is to a temporary file with an
+.B x.
+prefix, created with mode
+.B 444
+for a new SCCS file, or with the same mode as an existing
+SCCS file. After successful
+execution of
+.BR admin ,
+the existing
+.BR s. file
+is removed and replaced with the
+.BR x. file.
+This ensures that changes are made to the SCCS file only when no errors
+have occurred.
+.sp
+.LP
+It is recommended that directories containing SCCS files
+have permission mode
+.BR 755 ,
+and that the
+.BR s. files
+themselves have mode
+.BR 444 .
+The  mode for directories allows only the owner to modify the SCCS files
+contained in the directories, while the mode of the
+.BR s. files
+prevents all modifications except those performed using SCCS commands.
+.sp
+.LP
+If it should be necessary to patch an SCCS file for any reason, the mode
+may be changed to
+.B 644
+by the owner to allow use of a text editor. However, extreme care must
+be taken when doing this. The edited file should
+.I always
+be processed by an
+.RB ` "admin\ -h" '
+command to check for corruption, followed by an
+.RB ` "admin\ -z" '
+command to generate a proper check-sum. Another
+.RB ` "admin\ -h" '
+command is recommended to ensure that the resulting
+.BR s. file
+is valid.
+.sp
+.LP
+.B admin
+uses a temporary lock file, starting with the
+.RB ` z. '
+prefix, to prevent simultaneous updates to the
+.BR s. file.
+See
+.BR sccs-get (1)
+for further information about the
+.RB ` z. file'.
+
+.SH AUTHORS
+The
+.B SCCS
+suite was originally written by Marc J. Rochkind at Bell Labs in 1972.
+Release 4.0 of
+.BR SCCS ,
+introducing new versions of the programs
+.BR admin (1),
+.BR get (1),
+.BR prt (1),
+and
+.BR delta (1)
+was published on February 18, 1977; it introduced the new text based
+.B SCCS\ v4
+history file format (previous
+.B SCCS
+releases used a binary history file format).
+The
+.B SCCS
+suite
+was later maintained by various people at AT&T and Sun Microsystems.
+Since 2006, the
+.B SCCS
+suite is maintained by J\*org Schilling.
+
+.br
+.ne 7
+.SH "SOURCE DOWNLOAD"
+A frequently updated source code for the
+.B SCCS
+suite is included in the
+.B schilytools
+project and may be retrieved from the
+.B schilytools
+project at Sourceforge at:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/
+.LP
+The download directory is:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/files/
+.LP
+Check for the
+.B schily\-*.tar.bz2
+archives.
+.LP
+Less frequently updated source code for the
+.B SCCS
+suite is at:
+.LP
+.B
+    http://sourceforge.net/projects/sccs/files/
+.LP
+Separate project informations for the
+.B SCCS
+project may be retrieved from:
+.LP
+.B
+    http://sccs.sf.net
+.br

@@ -1,468 +1,284 @@
 ![Retro Burner](Images/dreamcastburner.png)
-![Retro Burner](Images/1.png)
-![Retro Burner](Images/2.png)
+
 # Retro Burner
 
-**Retro Burner** is a native Windows optical-disc burning frontend focused on retro consoles. The current 0.4.0 development branch retains the proven Dreamcast CDI workflow while the application is being expanded to additional console/media profiles.
-
-The application is being refactored as a **single distributable Windows executable**. Required command-line backends are embedded into RetroBurner.exe and extracted to a private temporary directory only while the application is running.
-
-It provides a modern front end around the existing open-source command-line tools required to extract and record Dreamcast CDI images, with automatic drive/media detection, burn progress, logging and sensible Dreamcast-specific defaults.
-
-The application does **not** implement its own CD recording engine.
-
-Instead, Retro Burner acts as a GUI / frontend / wrapper around **CDIrip** and **cdrecord**, handling the workflow and presenting their functionality through a simple Windows interface.
+Retro Burner is a native Windows optical-disc burning frontend for classic game consoles. The aim is simple: historically, people have needed a collection of different applications, command lines and console-specific guides to burn game discs. **Retro Burner aims to become the one-for-all tool for those workflows** while still exposing enough backend choice and logging to troubleshoot difficult drive/media combinations.
 
 **Current development version: 0.4.0**
 
----
+> **0.4.0 is not released yet.** The public repository is still on 0.3.0. This README describes the 0.4.0 release candidate and clearly labels features that still need physical validation.
 
-## Features
+Retro Burner is intended only for images and backups that you are legally entitled to use.
 
-* Native Windows application.
-* Modern GUI built with **Dear ImGui** and DirectX 11.
-* Open and burn DiscJuggler `.cdi` Dreamcast images.
-* Automatic detection of installed optical writers.
-* Displays optical drive model and firmware revision.
-* Queries the selected drive before burning.
-* Reads inserted CD-R media information.
-* Displays detected media/manufacturer information where available.
-* Checks the disc before starting a burn.
-* Dreamcast CDI structure detection.
-* Supports multi-session/self-boot Dreamcast CDI images.
-* Supports common Data+Data and Audio+Data Dreamcast self-boot layouts.
-* Uses the installed cdrecord backend's real device scan to map multiple optical writers reliably.
-* Automatically extracts CDI sessions and tracks using CDIrip.
-* Automatically invokes cdrecord with the required track/session parameters.
-* Burn speed selection based on the capabilities exposed by the drive/backend.
-* Automatic/default speed option.
-* Live extraction progress.
-* Live burn progress.
-* Overall percentage display.
-* Animated disc while an actual burn is in progress.
-* Disc remains static while idle.
-* Captures output from the underlying burning tools.
-* Detailed burn log available for troubleshooting.
-* Reports hardware/media errors returned by cdrecord rather than hiding them.
-* Automatically handles session sequencing.
-* Ejects the completed disc when the burn finishes successfully.
-* Temporary extracted files are managed automatically.
-* No separate command-line work is normally required.
+## Supported console profiles
 
----
+| Console | Image format | Recording path | 0.4.0 status |
+| --- | --- | --- | --- |
+| Dreamcast | CDI | CDIrip + RetroBeam | Physically tested |
+| PlayStation | BIN/CUE | RetroBeam CUE/SAO | Physically tested |
+| PlayStation 2 CD | BIN/CUE or ISO | RetroBeam | Implemented; final regression test pending |
+| PlayStation 2 DVD | ISO, DVD5/DVD9 | RetroBeam or growisofs + dvd+rw-mediainfo | DVD5 physically tested; DVD9 implemented but not physically validated |
+| Sega Saturn | BIN/CUE | RetroBeam CUE/SAO | Implemented; final regression test pending |
+| Xbox 360 XGD2 | ISO to DVD+R DL | RetroBeam or growisofs | Implemented; physical validation pending |
+| Xbox 360 XGD3 | ISO to DVD+R DL | image verification/preparation + BurnerMAX path + selected DVD backend | **Experimental; end-to-end burn currently untested** |
 
-## Supported Images
+If there is a legitimate optical-disc workflow Retro Burner does not cover, feature requests are welcome.
 
-The current Retro Burner workflow is designed for:
+## Highlights
 
-```text
-DiscJuggler CDI (.cdi)
-```
+- Native C++20 Windows application using Dear ImGui and DirectX 11.
+- One console/profile selector instead of separate burning applications.
+- Automatic optical writer, firmware and inserted-media detection.
+- Real write-speed choices reported by the drive/media where available.
+- Read-only media preflight before writing.
+- **Live graphical burn monitoring** with overall progress, actual write speed, remaining time, host/read-buffer and optical drive-buffer bars.
+- Automatic eject and completion sound after a successful burn.
+- Capability-driven Advanced Settings for BURN-Free, Force Speed, OPC, MMC streaming/rotation policy and drive-buffer reporting.
+- RetroBeam as the default recording backend, with **growisofs retained as an optional DVD backend** for PS2 DVD and Xbox 360 workflows.
+- Backend-aware monitoring keeps the UI consistent: RetroBeam supplies its FIFO/read and drive-buffer data, while growisofs `RBU`/`UBU` output is parsed into the same graphical **Buffer** and **Device Buffer** bars.
+- Single-EXE release design, subject to the licence terms of each bundled helper.
 
-including common Dreamcast self-boot layouts such as:
+## Recording backends: choice, not a universal ranking
 
-```text
-Session 1 - data
-Session 2 - data
-```
+RetroBeam is the default because it gives Retro Burner direct control over the recording path and detailed SPTI/buffer diagnostics. growisofs remains selectable for supported DVD profiles so users can compare behaviour on their own hardware.
 
-The underlying recording tools are technically capable of considerably more than this, but **Retro Burner intentionally exposes only the workflow required for Dreamcast CDI burning**.
+The two backends report progress differently internally, but Retro Burner presents them through a consistent burn UI. RetroBeam's FIFO/read-buffer and drive-buffer reporting drives the graphical **Buffer** and **Device Buffer** bars. For growisofs, Retro Burner parses its `RBU` and `UBU` values into those same bars, along with live percentage, actual write speed and estimated remaining time. growisofs phase output is also translated into cleaner status messages such as **Writing Lead-In**, **Writing Sectors** and **Finalising Disc**.
 
-Other disc image formats are not currently considered supported by the GUI.
+A result on one development system is **not** a universal statement that one backend is better than another. Optical recording depends on several variables at once, including:
 
----
+- burner model and firmware
+- USB/SATA bridge and connection quality
+- recordable-media brand, MID and batch quality
+- selected write speed and drive write strategy
+- console model and the condition/calibration of its optical pickup
 
-## How It Works
+That is why Retro Burner presents the backend as a user choice rather than pretending one test machine can determine the best engine for everyone.
 
-Retro Burner coordinates several existing components.
+## Console workflows
 
-The basic process is:
+### Dreamcast CDI
 
-```text
-Dreamcast CDI
-     |
-     v
-  CDIrip
-     |
-     +--> Session / track extraction
-     |
-     v
- Retro Burner
-     |
-     +--> drive and media preflight
-     +--> session sequencing
-     +--> progress monitoring
-     +--> error handling
-     |
-     v
-  cdrecord
-     |
-     v
-   CD-R
-```
+Dreamcast DiscJuggler images are extracted with CDIrip and recorded with RetroBeam. The tested self-boot Data+Data and Audio+Data workflows are retained.
 
-### 1. CDI extraction
+Retro Burner asks CDIrip for the required conversion without using CDIrip's `-cdrecord` preset, because that preset also enables track cutting that can damage audio tracks.
 
-Dreamcast CDI images are parsed using **CDIrip**.
+### PlayStation, PlayStation 2 CD and Sega Saturn
 
-CDIrip identifies the sessions and tracks contained in the DiscJuggler image and extracts the data required for recording.
+BIN/CUE images use RetroBeam's CUE/SAO path. PlayStation BIN/CUE burning has been physically tested. PS2 CD and Sega Saturn profiles are implemented and need final 0.4.0 regression testing on physical hardware/media.
 
-### 2. Drive and media preflight
+### PlayStation 2 DVD
 
-Before burning, Retro Burner uses the recording backend to query the selected optical drive and inserted media.
+PS2 DVD ISO images can be recorded with RetroBeam or the optional growisofs backend. `dvd+rw-mediainfo` is used for read-only media/capacity interrogation.
 
-Depending on what the drive reports, this can include:
+- DVD5 recording has been physically tested on a real PlayStation 2.
+- DVD9 handling and layer-break calculation are implemented but still require a physical release-validation burn.
+- Backend choice is preserved specifically because different drive/media combinations may behave differently.
 
-* drive manufacturer
-* drive model
-* firmware revision
-* supported recording modes
-* CD-R/CD-RW capability
-* inserted media type
-* ATIP information
-* media manufacturer
-* recording capabilities
+### Xbox 360 XGD2
 
-This lets the GUI check the burner and blank disc before starting the write operation.
-
-### 3. Recording
-
-The extracted tracks are passed to **cdrecord**.
-
-Retro Burner launches the required recording commands, monitors their output and handles each CDI session in the correct order.
-
-### 4. Progress
-
-Output from CDIrip and cdrecord is parsed by Retro Burner and presented through the GUI as extraction and burn progress.
-
-The command-line tools remain the components actually performing CDI extraction and disc recording.
-
----
-
-## Third-Party Software
-
-Retro Burner is built using and/or distributed alongside several open-source projects.
-
-These projects remain the property of their respective authors and are distributed according to their own licences.
-
-### Dear ImGui
-
-Retro Burner's user interface is built using **Dear ImGui**.
-
-Upstream project:
+XGD2 uses DVD+R DL and the standard layer break:
 
 ```text
-Dear ImGui
-Copyright (c) Omar Cornut and Dear ImGui contributors
+1913760
 ```
 
-The exact Dear ImGui revision bundled with a source tree can be checked in:
+The workflow is implemented but should remain marked as physically unverified until a release-validation disc is completed.
+
+### Xbox 360 XGD3 — experimental
+
+XGD3 requires a correctly prepared image plus enough writable DVD+R DL capacity. Retro Burner's development workflow performs image preparation/verification, blank-media checks, BurnerMAX-capacity checks and then records with the selected compatible DVD backend using layer break:
 
 ```text
-external/imgui/imgui.h
+2133520
 ```
 
-using the `IMGUI_VERSION` definition.
+The original source ISO is never modified; any preparation is performed on a temporary working copy.
 
-Dear ImGui is distributed under the **MIT License**.
+**Important 0.4.0 test status:** during development, the HL-DT-ST GP60NB50/PE00 test drive successfully accepted the BurnerMAX payload and exposed the expanded-capacity state, but the subsequent XGD3 recording did not proceed. The drive was later rendered unusable during separate manual firmware experimentation while investigating compatibility. That firmware incident was **not caused by a Retro Burner disc write**, but it removed the only available test drive before a complete XGD3 disc could be validated.
 
-A copy of its licence is included with source/binary distributions where applicable.
+As a result, **XGD3 titles remain end-to-end untested in Retro Burner**. Compatible burners are on the way for continued validation, including Lite-On iHAS hardware and cross-flash-compatible drives intended to use permanent C4EVA firmware. XGD3 should remain labelled experimental until those real burns are completed and verified on console.
 
-```text
-licenses/DearImGui-LICENSE.txt
-```
+### Native BurnerMAX status
 
-### CDIrip
+Retro Burner contains a native interoperability module based on the publicly documented/researched BurnerMAX command behaviour; the original C4E `BurnerMax.exe` is not bundled or executed.
 
-CDI extraction is performed using **CDIrip**.
+Current development observations:
 
-The bundled program identifies itself as:
+- **HL-DT-ST GP60NB50 / PE00 / USB:** payload stage and expanded-capacity state were reached; **no completed XGD3 burn was obtained before the drive was lost during separate firmware experimentation**.
+- **ASUS SDRW-08U9M-U / B201 / USB:** the current MediaTek-style path is safely rejected. Experimental non-MTK/vendor-specific BurnerMAX investigation is planned and can be tested on this drive without advertising it as supported beforehand.
 
-```text
-CDIrip
-Copyright (C) 2004 DeXT / Lawrence Williams
-```
+A model appearing here is never treated as a permanent whitelist. Live capability/capacity checks remain mandatory.
 
-CDIrip is open-source software distributed under the **GNU General Public License version 2**.
+## Drive and media compatibility
 
-Retro Burner does not claim ownership of CDIrip.
+One useful development result came from an ASUS SDRW-08U9M-U B201 with Sony AccuCORE `SONY16D1` DVD-R media. The same workload failed late in the disc with RetroBeam, growisofs and ImgBurn, around the same physical region. That is exactly why Retro Burner does not present a backend test as a universal verdict.
 
-The CDIrip source used to build the bundled executable is located under:
+If a burn repeatedly fails, test another media brand/MID, another write speed and—where available—another backend or writer before concluding that the image is bad.
 
-```text
-external/cdirip/
-```
+### Burn a coaster? Please report it
 
-Its licence is included as:
+A failed disc is useful data if the hardware/media details and log are preserved. Use the **Burn / coaster report** issue template and include:
 
-```text
-licenses/CDIrip-GPL-2.0.txt
-```
+- Retro Burner version or commit
+- console/profile and image format
+- selected recording backend
+- exact writer model, firmware and connection type
+- blank-media type, brand and MID if available
+- selected speed/settings
+- console model and optical-drive/laser notes where relevant
+- failure percentage/stage and final error
+- complete Retro Burner burn log
+- whether the same image/media behaved differently with another backend or application
 
-### cdrecord
+This helps separate software bugs from burner, firmware, media and console-laser compatibility problems.
 
-Physical disc recording is performed by **cdrecord**.
+## Single-EXE architecture
 
-The currently bundled build identifies itself as:
+The 0.4.0 release design embeds the helper programs required by each workflow and extracts them to a private process-specific temporary directory while Retro Burner runs.
 
-```text
-Cdrecord-ProDVD-ProBD-Clone 2.01.01a36
-Copyright (C) 1995-2007 Jörg Schilling
-```
+Current helpers include or are intended to include:
 
-Retro Burner launches cdrecord as a separate executable and parses its console output.
+- CDIrip
+- RetroBeam
+- growisofs
+- dvd+rw-mediainfo
+- ABGX360 Xbox 360 image verification/preparation helper
 
-Retro Burner does not contain or claim ownership of the cdrecord recording engine.
+Embedding a helper never changes its licence. `THIRD_PARTY.md`, `licenses/` and the corresponding source/provenance must match exactly what is shipped.
 
-The licence texts supplied with the bundled cdrecord distribution are included under:
+## Planned updates
 
-```text
-licenses/cdrecord-CDDL.txt
-licenses/cdrecord-GPL.txt
-```
+The following are **planned**, not claims about 0.4.0 functionality:
 
-Refer to those files and the corresponding upstream source distribution for the licensing terms applying to the bundled cdrecord components.
+- **Original Xbox** disc workflow (retail Xbox games are DVD-based, not CD-based).
+- **Sega/Mega-CD** profile and physical testing.
+- **CHD input** for CD-based systems, using `chdman` or an equivalent properly licensed conversion path to extract a temporary BIN/CUE set before recording.
+- **PS2 ESR patching** sourced from suitable open-source implementations, with provenance, licence and credits documented before integration.
+- **PS2 FreeDVDBoot preparation option**, likewise sourced only from appropriately licensed/open-source work with full attribution.
+- **Experimental BurnerMAX on non-MTK chipsets**, beginning with safe probing/testing on the ASUS development drive. It stays experimental unless repeatable real burns prove it useful.
+- **Automatic update check on application start**, with a small new-version pop-up linked to the GitHub Releases page and a user setting to disable the check.
+- **Adjustable 32 KiB / 64 KiB recording transfer size** for controlled compatibility testing. growisofs uses a 32 KiB DVD write chunk in the vendored source; RetroBeam's native Windows SPTI path supports larger transfers, and the option should be documented as an advanced compatibility control rather than a guaranteed quality switch.
+- **Linux build** as the first non-Windows target.
+- **Possible macOS build** after the cross-platform backend/UI work is proven on Linux.
+- **Possible 32-bit Windows “retro PC” build** if the dependency and toolchain footprint can be kept practical.
 
-### Cygwin Runtime
+### Other CD-based systems worth considering
 
-The bundled cdrecord Windows executable uses the Cygwin runtime:
+After Sega/Mega-CD, the existing BIN/CUE/SAO work could potentially be extended to other optical systems such as:
 
-```text
-tools/cygwin1.dll
-```
+- Neo Geo CD
+- PC Engine CD / TurboGrafx-CD
+- 3DO
+- NEC PC-FX
+- Amiga CD32 / CDTV
+- Philips CD-i
+- Atari Jaguar CD
+- FM Towns Marty
 
-The applicable Cygwin/GPL licence information is included as:
+These should be added only after image-layout requirements and real-hardware validation are understood; a generic “it is a CD” assumption is not enough.
 
-```text
-licenses/Cygwin-GPL-2.0.txt
-```
-
-Cygwin is a third-party project and is not part of the original Retro Burner source code.
-
----
-
-## Important Licensing Note
-
-**Retro Burner is a frontend.**
-
-The original Retro Burner GUI, drive-management, process-management and supporting source code may be distributed under the **MIT License**.
-
-That licence applies only to code original to the Retro Burner project.
-
-It does **not** relicense third-party software bundled with or used by Retro Burner.
-
-In particular:
-
-* Dear ImGui remains under its MIT licence.
-* CDIrip remains under GPL-2.0.
-* cdrecord remains under the licence terms supplied with that software.
-* Cygwin remains under its applicable licence terms.
-
-When redistributing Retro Burner, retain the relevant third-party copyright notices, licence files and any source-code availability obligations required by those projects.
-
-See:
-
-```text
-licenses/
-external/
-THIRD_PARTY.md
-```
-
-for further information.
-
----
-
-## Retro Burner License
-
-The original Retro Burner source code is released under the **MIT License**.
-
-In short, you are free to:
-
-* use it
-* copy it
-* modify it
-* redistribute it
-* use it in commercial or non-commercial projects
-
-provided the MIT copyright and licence notice is retained.
-
-See:
-
-```text
-LICENSE
-```
-
-for the complete licence.
-
-Third-party components are excluded from this grant and remain under their respective licences as described above.
-
----
-
-## Requirements
-
-### Running
-
-* Windows 10 or Windows 11
-* Compatible CD/DVD writer capable of writing CD-R media
-* Blank CD-R
-* Dreamcast DiscJuggler `.cdi` image
-
-A good-quality CD-R is strongly recommended.
-
-Old, scratched, dirty or poorly stored blank media can produce write errors even when the application, burner and image are functioning correctly.
-
-A write failure reported by Retro Burner generally means the underlying recording tool or optical drive reported a failure. The full backend output can be viewed in the burn log.
-
----
-
-## Building From Source
+## Building from source
 
 ### Requirements
 
-* Windows
-* Visual Studio 2022
-* Desktop development with C++
-* CMake 3.24 or newer
-* PowerShell
+- Windows 10 or Windows 11
+- Visual Studio 2022 with Desktop development with C++
+- CMake 3.24 or newer
+- PowerShell
+- Git
+- MSYS2/MinGW for the native RetroBeam helper and applicable third-party helper rebuilds
 
-Retro Burner uses C++20.
-
-### Dependencies
-
-Dear ImGui is stored under:
-
-```text
-external/imgui/
-```
-
-CDIrip source is stored under:
-
-```text
-external/cdirip/
-```
-
-The required Windows cdrecord files are stored under:
-
-```text
-tools/
-```
-
-If Dear ImGui has not yet been downloaded, run:
-
-```powershell
-.\scripts\bootstrap-deps.ps1
-```
-
-Then build the Release version with:
+Build Release:
 
 ```powershell
 .\build-release.bat
 ```
 
-The build system uses the Visual Studio 2022 x64 generator and produces the native Windows executable together with the required runtime tools.
+Prepare a release package:
 
----
+```powershell
+.\package-release.bat
+```
 
-## Project Layout
+The 0.4.0 build system uses portable project-relative paths and Retro Burner naming throughout the active build and packaging workflow.
+
+## Project layout
 
 ```text
 RetroBurner/
-│
-├── Images/
-│   └── dreamcastburner.png
-│
-├── src/
-│   ├── main.cpp
-│   ├── burn_engine.cpp
-│   ├── burn_engine.h
-│   ├── drive_manager.cpp
-│   ├── drive_manager.h
-│   ├── texture_loader.cpp
-│   └── texture_loader.h
-│
-├── external/
-│   ├── imgui/
-│   └── cdirip/
-│
-├── tools/
-│   ├── cdrecord.exe
-│   └── cygwin1.dll
-│
-├── licenses/
-│
-├── scripts/
-│
-├── CMakeLists.txt
-├── README.md
-├── THIRD_PARTY.md
-└── LICENSE
+|-- .github/ISSUE_TEMPLATE/          report/request templates
+|-- Images/                          README/release screenshots
+|-- assets/                          embedded console art and sound
+|-- cmake/                           RetroBeam bridge/build integration
+|-- src/                             Retro Burner C++ source
+|-- external/                        corresponding third-party source snapshots
+|-- licenses/                        third-party licence texts/notices
+|-- scripts/                         build/bootstrap/release helpers
+|-- CMakeLists.txt
+|-- README.md
+|-- THIRD_PARTY.md
+|-- CHANGELOG.md
+`-- LICENSE
 ```
 
----
+## Licensing
 
-## Troubleshooting
+Original Retro Burner source code is released under the **MIT License**. That grant applies only to original Retro Burner code and does not relicense third-party source, helper executables, artwork or sounds.
 
-### Burn reaches a high percentage and then fails
+Before 0.4.0 is released, every redistributed third-party component must have:
 
-This can be caused by the CD-R itself.
+1. a verified upstream licence/permission basis;
+2. the required copyright/licence notice in the release;
+3. corresponding source where the licence requires it; and
+4. clear attribution in `THIRD_PARTY.md`.
 
-Optical drives can encounter a physical write error late in a burn even after hundreds of megabytes have been written successfully.
-
-Try:
-
-* another CD-R
-* a cleaner disc
-* another brand of media
-* checking the burn log for `Medium Error`, `Write Error` or similar drive responses
-
-A failed disc should not normally be reused.
-
-### The available write speeds seem unusual
-
-Modern DVD writers frequently expose only a limited set of speeds when writing CD-R media.
-
-A drive whose minimum practical CD-R speed is around 10x, for example, cannot necessarily be forced to write at the traditional 1x/2x/4x speeds associated with older Dreamcast burning guides.
-
-The drive, firmware and inserted media ultimately determine which recording speeds are possible.
-
-### A burn fails but the GUI reaches 100%
-
-The percentage represents the progress reported by the extraction/recording process.
-
-A disc can finish transferring its track data and still fail during the final write, flush or fixation stage.
-
-Retro Burner therefore uses the final result reported by the backend rather than assuming that reaching 100% means the disc was successfully completed.
-
----
-
-## Disclaimer
-
-Retro Burner is an independent community project.
-
-It is **not affiliated with, endorsed by, sponsored by, or produced by Sega Corporation**.
-
-Dreamcast, the Dreamcast name, logos and associated trademarks are the property of their respective owners.
-
-This software is intended for use with disc images that you are legally entitled to use.
-
-No Sega software, BIOS files, game data or copyrighted Dreamcast game images are included with Retro Burner.
-
----
+See `THIRD_PARTY.md` and `licenses/` for the release inventory.
 
 ## Credits
 
-Retro Burner brings together work from several open-source projects.
+Retro Burner stands on a large amount of prior open-source and optical-disc work. Thanks to:
 
-Special thanks to:
+- **Omar Cornut and Dear ImGui contributors** — Dear ImGui.
+- **DeXT / Lawrence Williams and CDIrip contributors/maintainers** — DiscJuggler CDI extraction.
+- **Jörg Schilling and SchilyTools/cdrtools contributors** — cdrecord, libscg and related optical-recording foundations used by RetroBeam.
+- **Andy Polyakov and dvd+rw-tools contributors**, plus the Windows-port contributors whose source is vendored in this repository — DVD media interrogation and growisofs.
+- **Seacrest, Hadzz, BakasuraRCE and later ABGX360 community contributors** — Xbox 360 image verification/preparation software and continued community maintenance.
+- **C4EVA, Team Jungle and Team Xecuter researchers/developers** — historical BurnerMAX work and documentation/research that made interoperability possible. Retro Burner does not distribute the original BurnerMax executable.
+- **Mixkit** — current completion sound asset, subject to the retained asset notice/licence terms.
+- Everyone testing burns, reporting failed media combinations, requesting console profiles and documenting old optical hardware.
 
-* **Omar Cornut and Dear ImGui contributors** — Dear ImGui
-* **DeXT / Lawrence Williams** — CDIrip
-* **Jörg Schilling and contributors** — cdrecord / associated recording tools
-* **Cygwin contributors** — Windows POSIX compatibility runtime
-* everyone still burning Dreamcast CD-Rs decades later
+Third-party names are credits/provenance only and do not imply endorsement of Retro Burner.
 
----
+## Disclaimer
 
-## Status
+Retro Burner is an independent community project. It is not affiliated with, endorsed by, sponsored by, or produced by Sega, Sony, Microsoft or the publishers/developers of supported games.
 
-Retro Burner has been tested with real Dreamcast CDI images, physical optical writers and real CD-R media.
+Console names and trademarks belong to their respective owners. No BIOS files, console firmware, game data or copyrighted game images are included.
+
+Use Retro Burner only with software and disc images that you have the legal right to use. Online-service policies and local law remain the user's responsibility.
+
+## Engineering notes
+
+### Continuous-write quality policy
+
+Retro Burner prioritizes an uninterrupted recording pass for console media.
+
+- BURN-Free remains disabled by default and is opt-in only when the drive advertises support.
+- RetroBeam exposes host/read and drive-buffer health in the burn UI.
+- Force Speed and MMC streaming controls are capability-gated rather than model-whitelisted.
+- DVD layer-break and OPC policy are constructed by Retro Burner and passed to the selected recording backend.
+- Recording transfer size is currently backend/profile dependent; an explicit 32 KiB / 64 KiB compatibility control is planned rather than claiming one value is universally superior.
+
+DVD behaviour remains media-, drive-, firmware-, bridge- and MMC-profile-dependent.
+
+### RetroBeam source baseline
+
+Retro Burner vendors the pinned SchilyTools source tag `2021-09-18` (commit `90e8f68220698ce0dc132a9f7e7e25f0b9382f64`), containing cdrecord 3.02a10. RetroBeam retains the applicable upstream copyright/licence headers while carrying the Windows integration work in this repository.
+
+### Native Windows host FIFO
+
+The pinned Schily cdrecord FIFO is a producer/consumer ring buffer based on shared memory plus `fork()`. Native MinGW does not provide POSIX `fork()`, so Retro Burner's Windows adaptation uses `VirtualAlloc()` and a CRT-aware `_beginthreadex()` reader thread. The original POSIX FIFO path remains separate from the native Windows implementation.
+
+### Native Windows SPTI transfer work
+
+Retro Beam's Windows libscg/SPTI work includes expanded transfer capability and tracing/diagnostic support. For DVD-R compatibility testing, the current development tree also contains a 32 KiB write cap for the relevant sequential DVD path. 0.4.x should expose the 32/64 KiB choice only after the behaviour is made explicit in the UI and logs.

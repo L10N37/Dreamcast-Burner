@@ -1,0 +1,541 @@
+.\" @(#)sccs-cvt.1	1.26 20/06/28 Copyright 2011-2020 J. Schilling
+.\" Manual page for sccs-cvt
+.\"
+.\" The contents of this file are subject to the terms of the
+.\" Common Development and Distribution License, Version 1.0 only
+.\" (the "License").  You may not use this file except in compliance
+.\" with the License.
+.\"
+.\" See the file CDDL.Schily.txt in this distribution for details.
+.\" A copy of the CDDL is also available via the Internet at
+.\" http://www.opensource.org/licenses/cddl1.txt
+.\"
+.\" When distributing Covered Code, include this CDDL HEADER in each
+.\" file and include the License file CDDL.Schily.txt from this distribution.
+.\"
+.if t .ds a \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'a
+.if t .ds o \v'-0.55m'\h'0.00n'\z.\h'0.45n'\z.\v'0.55m'\h'-0.45n'o
+.if t .ds u \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'u
+.if t .ds A \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'A
+.if t .ds O \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'O
+.if t .ds U \v'-0.77m'\h'0.30n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.75n'U
+.if t .ds s \\(*b
+.if t .ds S SS
+.if n .ds a ae
+.if n .ds o oe
+.if n .ds u ue
+.if n .ds s sz
+.TH sccs-cvt 1 "2020/06/28" "J\*org Schilling" "Schily\'s USER COMMANDS"
+.SH NAME
+sccs-cvt, sccscvt \- convert SCCS history files between v4/v6
+.SH SYNOPSIS
+.B
+sccscvt
+.B "[ options ]"
+.I s.file1 .. s.filen
+.SH DESCRIPTION
+.B Sccscvt
+converts
+.B SCCS\ v4
+history files (as introduced in February 1977) into
+.B SCCS\ v6
+history files (as introduced in August 2011) and vice versa.
+.LP
+The first line, containing the SCCS magic number and the checksum is converted
+to the format that is appropriate. The time format in the delta table is
+converted by either removing the
+.B SCCS\ v6
+extensions or by adding time zone
+information by assuming that all time stamps are from the local time zone. When
+converting from
+.B SCCS\ v6
+to
+.BR "SCCS\ v4" ,
+the enhanced time stamp data is retained as
+the first delta comment line in a delta block.
+.LP
+SID specific
+.B SCCS\ v6
+enhancements are converted into special delta comment to 
+prevent information loss when converting to
+.BR "SCCS\ v4" .
+.LP
+The
+.B SCCS\ v6
+enhancements that are between the
+.B SCCS\ v4
+flags indicated by
+.B ^Af
+and the SCCS comment block that is bracketed between
+.B ^At
+and
+.B ^AT
+are untouched as these enhancements are not flagged by historic SCCS versions
+and retained by historic SCCS versions when a history file is modified.
+.LP
+When in old mode, the option
+.B \-NSCCS
+is not in effect and a file argument refers to a directory, the directory is
+scanned for file names that start with ``s.'' and examines all these files.
+.LP
+When in new mode, the option
+.B \-NSCCS
+is in effect, and a file argument refers to a directory,
+.B sccs-cvt
+opens the corresponding directory with SCCS history files and scans it
+for file names that start with ``s.'' and examines all these files.
+.LP
+It is recommended not to call
+.B sccs-cvt
+directly but via
+.RB `` "sccs cvt" ''
+as this automatically adds the 
+.B \-NSCCS
+option in new mode. This is needed in order to get the path name as global
+meta data into the converted SCCSv6 history file.
+.SS "Converting an old mode project into a new mode project"
+.LP
+It is recommended to first initialize the project to use an in-tree repository
+by calling:
+.sp
+.B "    sccs init -i ."
+.sp
+in order to prepare the new mode.
+.LP
+By then calling:
+.sp
+.B "    SCCS_NMODE= sccs cvt -k -ooo ."
+.sp
+all SCCS history files from the current directory are converted.
+The environment
+.B SCCS_NMODE=
+is currently needed in order to enforce new mode in
+.BR sccs (1).
+Repeat the last command wth other directories from the project.
+.LP
+This program is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+. \" .SH RETURNS
+. \" .SH ERRORS
+.SH OPTIONS
+.LP
+.TP
+.B \-d
+When converting from
+.B SCCS\ v6
+to
+.BR "SCCS\ v4" ,
+discard the extended
+.B SCCS\ v6
+meta data instead of converting it into special
+degenerated delta comments.
+.TP
+.B \-help
+Prints a short summary of the 
+.B sccscvt
+options and exists.
+.TP
+.B \-k
+.TP
+.B \-keep
+Keep the original history file as
+.BI o. file\fR.
+When this option is missing, the original file is replaced by the
+converted file.
+.TP
+.B \-o
+Keep the old time stamp for the converted file.
+.TP
+.B \-oo
+Set the time stamp for the converted file to the time stamp
+of the original file + 1 nanosecond.
+This is sufficient for modern filesystems like
+.B ZFS
+to get a distinguishable newer time that is still similar to the old time stamp.
+.TP
+.B \-ooo
+Set the time stamp for the converted file to the time stamp
+of the original file + 1 microsecond.
+This is sufficient for older filesystems like
+.B UFS
+to get a distinguishable newer time that is still similar to the old time stamp.
+.TP
+.B \-oooo
+Set the time stamp for the converted file to the time stamp
+of the original file + 1 second.
+This is sufficient for historic filesystems
+to get a distinguishable newer time that is still similar to the old time stamp.
+.TP
+.B \-V4
+Convert a
+.B SCCS\ v6
+history file into a
+.B SCCS\ v4
+history file.
+.TP
+.B \-V6
+Convert a
+.B SCCS\ v4
+history file into a
+.B SCCS\ v6
+history file.
+
+.sp
+.ne 3
+.TP
+.BI -N bulk-spec
+Processes a bulk of SCCS history files.
+This option allows to do an efficient mass processing of SCCS history files.
+.sp
+The
+.I bulk-spec
+parameter is composed from an optional list of
+.B flag
+parameters followed by an optional
+.B path
+specifier.
+.sp
+The following flag types are supported:
+.RS
+.TP 10
+.B none
+.LP
+.ne 4
+The following path specifier types are supported:
+.TP 10
+.B \-N
+The file name parameters to the
+.B sccscvt
+command are not
+.I s.filename
+files but the names of the g-files.
+The
+.I s.filename
+names are automatically derived from the g-file names by prepending
+.B s.
+to the last path name component.
+Both,
+.I s.filename
+and the g-file are in the same directory.
+.TP
+.B \-Ns.
+The file name parameters to the
+.B sccscvt
+command are
+.I s.filename
+files.
+The the g-files names are automatically derived by removing
+.B s.
+from the beginning of last path name component of the
+.IR s.filename.
+Both,
+.I s.filename
+and the g-file are in the same directory.
+.TP
+.BI \-N dir
+The file name parameters to the
+.B sccscvt
+command are not
+.I s.filename
+files but the names of the g-files.
+The
+.I s.filename
+names are put into directory
+.IR dir ,
+the names are automatically derived from the g-file names by prepending
+.IB dir /s.
+to the last path name component.
+.TP
+.BI \-N dir /s.
+The file name parameters to the
+.B sccscvt
+command are
+.I s.filename
+files in directory
+.IR dir .
+The the g-files names are automatically derived by removing
+.IB dir /s.
+from the beginning of last path name component of the
+.IR s.filename.
+.PP
+A typical value for
+.I dir
+is
+.BR SCCS .
+.PP
+In order to overcome the limited number of
+.BR exec (2)
+arguments, it is recommended to use
+.RB ` \(mi \&'
+as the file name parameter for
+.BR sccscvt (1)
+and to send a list of path names to
+.RE
+
+.br
+.ne 3
+.TP
+.BI \-X extended\-options
+Specify extended options. The argument
+.I extended\-options
+may be a comma separated list of extended option names.
+.sp
+The following extended options are supported, they may be abbreviated as long
+ad the abbreviation is still unique. Options with parameter may not be
+abbreviated.
+.sp
+.RS
+.TP
+.B 0
+When reading filenames from
+.BR stdin ,
+triggered by a file name argument
+.RB ` - ',
+the filename separator is a
+.B null byte
+instead of a
+.BR newline .
+This allows to use long lists with arbitrary filenames.
+.TP
+.B help
+Print a short online help for available options.
+.PP
+The
+.B \-X
+option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.RE
+
+.TP
+.PD 0
+.B \-V
+.TP
+.B \-version
+.TP
+.B \-\-version
+.PD
+Prints the
+.B sccscvt
+version number string and exists.
+.\" .SH EXAMPLES
+
+.SH ENVIRONMENT VARIABLES
+.sp
+.LP
+See
+.BR environ (5)
+for descriptions of the following environment variables that affect the
+execution of
+.BR sccscvt (1):
+.BR LANG ,
+.BR LC_ALL ,
+.BR LC_CTYPE ,
+.BR LC_MESSAGES ,
+and
+.BR NLSPATH .
+
+.br
+.ne 4
+.TP
+.B SCCS_NO_HELP
+If set,
+.BR sccscvt (1)
+will not automatically call
+.BR help (1)
+with the SCCS error code in order to print a more helpful
+error message. Scripts that depend on the exact error messages
+of SCCS commands should set the environment variable
+.B SCCS_NO_HELP
+and set
+.BR LC_ALL=C .
+
+.br
+.ne 4
+.TP
+.B TZ
+Used for the timezone when converting between
+.B SCCS\ v4
+and
+.BR "SCCS\ v6" .
+
+.SH EXIT STATUS
+.sp
+.LP
+The following exit values are returned:
+.sp
+.ne 2
+.TP 5
+.B 0
+Successful completion.
+.sp
+.ne 2
+.TP
+.B 1
+An error occurred.
+.sp
+.ne 2
+.TP
+.B -1
+A wrong option or parameter was specified.
+
+.SH FILES
+.sp
+.ne 2
+.TP
+.BI s. file
+history file
+.sp
+.ne 2
+.TP
+.BI o. file
+saved original version of the history file
+.sp
+.ne 2
+.TP
+.BI x. file
+temporary copy of the
+.BR s. file;
+renamed to the
+.BR s. file
+after completion.
+
+.sp
+.ne 2
+.TP
+.BI z. file
+temporary lock file contains the binary process id in host byte order
+followed by the host name
+
+.SH ATTRIBUTES
+.LP
+See 
+.BR attributes (5)
+for descriptions of the following attributes:
+.LP
+.sp
+.TS
+tab() box;
+cw(2.75i) |cw(2.75i) 
+lw(2.75i) |lw(2.75i) 
+.
+ATTRIBUTE TYPEATTRIBUTE VALUE
+_
+AvailabilitySCHILYdeveloper-build-sccs
+_
+Interface StabilityEvolving
+.TE
+
+.SH SEE ALSO
+.nh
+.LP
+.BR sccs (1),
+.BR sccs\-add (1),
+.BR sccs\-admin (1),
+.BR sccs\-branch (1),
+.BR sccs\-cdc (1),
+.BR sccs\-check (1),
+.BR sccs\-clean (1),
+.BR sccs\-comb (1),
+.BR sccs\-commit (1),
+.BR sccs\-create (1),
+.BR sccs\-deledit (1),
+.BR sccs\-delget (1),
+.BR sccs\-delta (1),
+.BR sccs\-diffs (1),
+.BR sccs\-edit (1),
+.BR sccs\-editor (1),
+.BR sccs\-enter (1),
+.BR sccs\-fix (1),
+.BR sccs\-get (1),
+.BR sccs\-help (1),
+.BR sccs\-histfile (1),
+.BR sccs\-info (1),
+.BR sccs\-init (1),
+.BR sccs\-istext (1),
+.BR sccs\-ldiffs (1),
+.BR sccs\-log (1),
+.BR sccs\-print (1),
+.BR sccs\-prs (1),
+.BR sccs\-prt (1),
+.BR sccs\-rcs2sccs (1),
+.BR sccs\-remove (1),
+.BR sccs\-rename (1),
+.BR sccs\-rmdel (1),
+.BR sccs\-root (1),
+.BR sccs\-sact (1),
+.BR sccs\-sccsdiff (1),
+.BR sccs\-status (1),
+.BR sccs\-tell (1),
+.BR sccs\-unedit (1),
+.BR sccs\-unget (1),
+.BR sccs\-val (1),
+.BR bdiff (1), 
+.BR diff (1), 
+.BR what (1),
+.BR sccschangeset (4),
+.BR sccsfile (4),
+.BR attributes (5),
+.BR environ (5),
+.BR standards (5).
+.hy 14
+
+.SH DIAGNOSTICS
+.SH NOTES
+If a SCCS history file is converted from
+.B SCCS\ v4
+to
+.B SCCS\ v6
+and there is no
+retained
+.B SCCS\ v6
+timestamp information in the delta comment, it may be a good
+idea to manually correct time zone information.
+.SH BUGS
+.SH AUTHOR
+.BR sccscvt (1)
+was originally written by J\*org Schilling in 2011 and is still
+maintained by J\*org Schilling.
+
+.br
+.ne 7
+.SH "SOURCE DOWNLOAD"
+A frequently updated source code for the
+.B SCCS
+suite is included in the
+.B schilytools
+project and may be retrieved from the
+.B schilytools
+project at Sourceforge at:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/
+.LP
+The download directory is:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/files/
+.LP
+Check for the
+.B schily\-*.tar.bz2
+archives.
+.LP
+Less frequently updated source code for the
+.B SCCS
+suite is at:
+.LP
+.B
+    http://sourceforge.net/projects/sccs/files/
+.LP
+Separate project informations for the
+.B SCCS
+project may be retrieved from:
+.LP
+.B
+    http://sccs.sf.net
+.br

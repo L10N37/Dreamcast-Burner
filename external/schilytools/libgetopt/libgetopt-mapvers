@@ -1,0 +1,26 @@
+# /* @(#)libgetopt-mapvers	1.7 19/12/14 Copyright 2018-2019 J. Schilling */
+#include <schily/mconfig.h>
+
+SCHILY_1.1 {
+global:
+	optflg;		# Needed for plus options
+} SCHILY_1.0;
+
+SCHILY_1.0 {
+global:
+	getsubopt;	# getsubopt()
+	getopt;		# getopt()
+
+	optind;		# int optind
+	opterr;		# int opterr
+	optopt;		# int optopt
+	optarg;		# char *optarg
+	opt_sp; 	# int opt_sp	Missing w. outdated getopt() on Solaris
+
+#if defined(HAVE_PRAGMA_WEAK) && defined(HAVE_LINK_WEAK)
+	_sp;	# int _sp	Compatibility to old SunOS programs
+#endif
+
+local:
+	*;
+};

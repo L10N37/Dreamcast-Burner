@@ -100,6 +100,22 @@ if ([string]::IsNullOrWhiteSpace($generator)) {
 
 & (Join-Path $PSScriptRoot "bootstrap-deps.ps1")
 
+# RetroBeam is RetroBurner's recording backend. Build/stage it before MSVC
+# configures the GUI so the exact current backend is embedded in RetroBurner.exe.
+$retroBeamBuild = Join-Path $projectRoot "build-retrobeam-win.ps1"
+if (-not (Test-Path -LiteralPath $retroBeamBuild)) {
+    throw "RetroBeam build script is missing: $retroBeamBuild"
+}
+& $retroBeamBuild -NoVersionCheck
+if ($LASTEXITCODE -ne 0) {
+    throw "RetroBeam build/stage failed."
+}
+$retroBeamExe = Join-Path $projectRoot "tools\retrobeam-dev\retrobeam.exe"
+if (-not (Test-Path -LiteralPath $retroBeamExe)) {
+    throw "RetroBeam build completed without staging: $retroBeamExe"
+}
+Write-Host "RetroBeam backend: $retroBeamExe"
+
 Write-Host "Using: $visualStudioName $($installation.catalog.productDisplayVersion)"
 Write-Host "CMake generator: $generator"
 Write-Host "Compiler: $compilerPath"

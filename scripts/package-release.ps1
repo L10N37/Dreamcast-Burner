@@ -2,8 +2,8 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $buildRoot = Join-Path $projectRoot "build\msvc-x64"
 $distRoot = Join-Path $projectRoot "dist"
-$packageRoot = Join-Path $distRoot "DreamcastBurner"
-$zipPath = Join-Path $distRoot "DreamcastBurner-win64.zip"
+$packageRoot = Join-Path $distRoot "RetroBurner"
+$zipPath = Join-Path $distRoot "RetroBurner-0.4.0-win64.zip"
 
 & (Join-Path $PSScriptRoot "build.ps1") -Configuration Release
 

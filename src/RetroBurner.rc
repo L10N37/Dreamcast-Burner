@@ -14,10 +14,10 @@ IDR_PNG_SPINNING_DISC RCDATA "../assets/makeSpinDC.png"
 // Runtime tools are embedded so the distributable application is one EXE.
 // At runtime Retro Burner extracts them into a private temporary directory.
 IDR_BIN_CDIRIP RCDATA "../tools/.embedded/cdirip.exe"
-IDR_BIN_CDRECORD RCDATA "../tools/cdrecord.exe"
-IDR_BIN_CYGWIN RCDATA "../tools/cygwin1.dll"
+IDR_BIN_RETROBEAM RCDATA "../tools/retrobeam-dev/retrobeam.exe"
 IDR_BIN_GROWISOFS RCDATA "../tools/growisofs.exe"
 IDR_BIN_DVD_MEDIAINFO RCDATA "../tools/dvd+rw-mediainfo.exe"
+IDR_BIN_ABGX360 RCDATA "../tools/abgx360.exe"
 IDR_WAV_BURN_COMPLETE WAVE "../assets/mixkit-cartoon-monkey-mocking-laugh-107.wav"
 
 // Keep third-party notices inside the single executable as resources.
@@ -28,3 +28,7 @@ IDR_LICENSE_CDRECORD_CDDL RCDATA "../licenses/cdrecord-cddl.txt"
 IDR_LICENSE_CDRECORD_GPL RCDATA "../licenses/cdrecord-gpl3.txt"
 IDR_LICENSE_CYGWIN RCDATA "../licenses/cygwin-GPL-2.0.txt"
 IDR_LICENSE_IMGUI RCDATA "../external/imgui/LICENSE.txt"
+IDR_LICENSE_DVDRWTOOLS_GPL RCDATA "../licenses/dvd-rw-tools-GPL-2.0.txt"
+IDR_LICENSE_ABGX360_GPL RCDATA "../licenses/ABGX360-GPL-2.0.txt"
+IDR_LICENSE_MIXKIT_NOTICE RCDATA "../licenses/Mixkit-Sound-Effects-NOTICE.txt"
+IDR_LICENSE_BURNERMAX_NOTICE RCDATA "../licenses/BurnerMAX-NOTICE.txt"

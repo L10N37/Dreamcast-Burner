@@ -1,0 +1,10 @@
+ARCH=i386
+PKG=CSWsccs
+#PKG=XXXsccs
+NAME=sccs - The Source Code Control System (SCCS)
+VERSION=1.00.02
+CATEGORY=application
+VENDOR=http://sccs.sourceforge.net/ packaged for CSW by Jörg Schilling
+HOTLINE=http://www.blastwave.org/bugtrack/
+EMAIL=joerg@blastwave.org
+#BASEDIR=/opt/csw

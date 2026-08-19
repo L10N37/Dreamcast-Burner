@@ -1,0 +1,234 @@
+*
+* CDDL HEADER START
+*
+* The contents of this file are subject to the terms of the
+* Common Development and Distribution License (the "License").
+* You may not use this file except in compliance with the License.
+*
+* You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+* or http://www.opensolaris.org/os/licensing.
+* See the License for the specific language governing permissions
+* and limitations under the License.
+*
+* When distributing Covered Code, include this CDDL HEADER in each
+* file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+* If applicable, add the following below this CDDL HEADER, with the
+* fields enclosed by brackets "[]" replaced with your own identifying
+* information: Portions Copyright [yyyy] [name of copyright owner]
+*
+* CDDL HEADER END
+*
+* Copyright 1997 Sun Microsystems, Inc. All rights reserved.
+* Use is subject to license terms.
+*
+* Copyright 2006-2018 J. Schilling
+*
+* @(#)co	1.14 18/12/04 J. Schilling
+*
+* @(#)co 1.3 06/12/12
+*
+*#ident	"@(#)sccs:help.d/co"
+*	Messages from routines in 'com' directory of sccs.
+*
+-1
+"not an SCCS file"
+A file that you think is an SCCS file
+does not begin with the characters "s.".
+-2
+"not an sccs file"
+A file that you think is an SCCS file
+does not begin with the magic ^Ahnnnnn (SCCS v4) or ^AhV6,sum=nnnnn (SCCS v6)
+in it's first line.
+-3
+"more than one link"
+SCCS files may only have one name (link).
+This is because the delta program unlinks the old file
+and then links to the new file.
+-4
+"format error at line ..."
+The format of the SCCS file is logically invalid.  The error
+was discovered at the stated line.  See if you can find
+the problem with the prs command.  If not, do a "help stuck".
+-5
+"premature eof"
+The SCCS file ended in a strange place.  Its probably a goner.
+You can try "help stuck", but chances are you're going to
+have to go to a backup copy.
+-6
+"corrupted file"
+The computed global hash count of the input SCCS history file did not check
+with the stored hash count.  The file may have been damaged since it was
+last accessed.  See your local SCCS maintenance person.
+-7
+"too long"
+The pathname is too long.
+-8
+"invalid sid"
+The specified sid is syntactically incorrect.
+-10
+"clock set wrong!!!"
+The time of day is wrong.  Contact your local UNIX support group immediately!
+(Try a "date" command.)
+(This error is produced whenever the creation date of the newest delta
+in the SCCS file is newer than the current date.  This will happen
+whenever the date is accidently set wrong.  This error
+will also occur if a delta was created while the clock was
+set ahead - but less than a year - and has since been corrected.
+In this case the current time is correct, but the date of the
+delta is wrong.)
+-11
+"Clock may be set wrong!"
+The time of day may be set wrong.
+Check the current time with the "date" command.
+If it is wrong, contact your local UNIX support group immediately!
+(This message is produced whenever the difference between
+the current date and the creation date of the newest delta in
+the SCCS file is greater than one year.)
+-12
+"bad range"
+In a delta list, the two limits of a range of deltas were not in ascending
+order.
+-13
+"delta list syntax"
+A list of deltas was syntatically erroneous.  The correct syntax is:
+		<list>	::=  <range> | <list> , <range>
+		<range>	::=  <delta> | <delta> - <delta>
+		<delta>	::=  <rel> | <rel> . <lev>
+-14
+"not authorized to make deltas"
+Your login name or group ID is not on the list of
+users who are allowed to add deltas to this file.
+You can execute "prs -d:UN: file" to see who is allowed. 
+See your project administrator to get your login name or
+group ID on the list.
+-15
+"release ... < ... (floor)"
+Either the release you specified or else the default release is lower
+than the lowest allowable release (the floor).  If you're not sure what's
+wrong see your SCCS administrator.
+-16
+"release ... > ... (ceiling)"
+Either the release you specified or else the default release is higher
+than the highest allowable release (the ceiling).  If you're not sure what's
+wrong see your SCCS administrator.
+-17
+"bad p-file format"
+The p-file is messed up.
+Get your local source code administrator to
+fix it.
+-18
+"line longer than 1024 characters"
+Don't type so much on a line.
+-19
+"response too long"
+A response can't be so long.
+Try typing less (maybe you can reference
+some other document).
+-20
+"cannot fork; try again"
+The system is busy;
+you'll have to try again later.
+-21
+"too many MRs"
+You can't enter so many MRs.
+Sorry.
+-22
+"out of space"
+Your MRs took up too much memory.
+Type less.
+-23
+... locked against editing
+The specified release (or possibly all releases) for the
+SCCS file have been locked using the _l flag of admin.  Do a
+'prs -d:LK: s.filename' to see a list of locked releases
+(_a means "all").
+-24
+"MR number too long"
+You entered an MR number which is much to long.  Remember,
+multiple MRs should be separated by spaces or tabs.
+-25
+"begins"
+An include/exclude conflict exists beginning here.  The
+SID's in the include/exclude list change conflicting lines.
+The lines involved may not be correct.
+-26
+"ends"
+An include/exclude conflict ends here.  The SID's in the 
+include/exclude list change conflicting lines.  The lines
+preceding this message may be incorrect.
+-27
+"corrupted file version"
+The computed version specific hash count of the extracted file version did
+not check with the stored hash count.  The file may have been damaged
+since it was last accessed.  File version hashs are a SCCS v6 extension,
+so the problem may have been caused by an incorrect SCCS v4 -> SCCS v6
+history file conversion.  You may like to check other versions for correct
+checksums to isolate the problem.  See your local SCCS maintenance person.
+-28
+"path conversion error"
+A path could not be converted into a normalized path without
+"./" or ".." components and without symbolic links.
+-29
+"resolved path too long"
+The resolved path name is too long for further processing.
+-30
+"too many include exclude or ignore entries"
+The SCCS history file contains more a delta entry with more include,
+exclude or ignore entries than expected. Contact the SCCS maintainers
+to increase the MAXLINE constant and recompile.
+-31
+"line too long"
+A line in a file was longer than a static buffer. Contact the SCCS maintainers
+to increase the MAXLINE constant and recompile.
+-32
+"cannot get project home directory"
+The project set home directory could not be retrieved.
+The project set home is a directory that holds a directory
+".sccs" for project specific SCCS metadata. The location of this
+directory .sccs is searched for by scanning the filesystem
+towards the root directory starting from the current working
+directory. If an error occurs while trying to look for .sccs,
+a sccs program cannot find out whether the current repository
+is a project oriented SCCS v6 repository. Check and fix
+directory permissions to make sccs work again.
+-33
+"no SCCS project home directory"
+The project set home directory was not seen.
+The project set home is a directory that holds a directory
+".sccs" for project specific SCCS metadata. The location of this
+directory .sccs is searched for by scanning the filesystem
+towards the root directory starting from the current working
+directory. If the directory ".sccs" or it's default content was
+not found, SCCS cannot work in project mode.
+Try to run "sccs init" to mark a project home directory.
+-34
+"bad syntax in changeset line"
+A line in the changeset file was incorrectly structured.
+Check the changeset file for consistency. Inform your local
+SCCS administrator.
+-35
+"no initial path in data structures"
+The SCCS packet structure was not fully initialized. Inform
+your local administrator.
+-36
+"not in specified sub directory"
+The s.filename argument to admin does not contain the expected
+subdirectory as specified by -Ndir/s.
+-37
+"bad N argument"
+The argument to the 'N' keyletter contains the string 's.' but does
+not end in 's.'. Valid arguments are -Ns. or -Ndir/s.
+-38
+"not a SID-tagged filename"
+A filename argument was not in the form "+SID+filename".
+Check your input data and verify whether -N++ was intentionally specified.
+-39
+"cannot open current directory"
+Cannot open the current working directory; check permissions.
+-40
+"cannot open project home directory"
+Cannot open the project set home directory; check permissions.
+-41
+"illegal Xopt"
+X options may be specified as a comma separated list. Available options
+are listed with 'sccs help Xopts'

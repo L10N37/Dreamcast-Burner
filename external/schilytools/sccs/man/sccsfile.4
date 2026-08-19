@@ -1,0 +1,1306 @@
+'\" te
+.\" @(#)sccsfile.4	1.48 20/06/16 Copyright 2007-2019 J. Schilling */
+.\" Copyright (c) 2002, Sun Microsystems, Inc. All Rights Reserved.
+.\" Copyright 1989 AT&T
+.\" Copyright (c) 2007-2019 J. Schilling
+.\" CDDL HEADER START
+.\"
+.\" The contents of this file are subject to the terms of the
+.\" Common Development and Distribution License ("CDDL"), version 1.0.
+.\" You may use this file only in accordance with the terms of version
+.\" 1.0 of the CDDL.
+.\"
+.\" A full copy of the text of the CDDL should have accompanied this
+.\" source.  A copy of the CDDL is also available via the Internet at
+.\" http://www.opensource.org/licenses/cddl1.txt
+.\"
+.\" When distributing Covered Code, include this CDDL HEADER in each
+.\" file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+.\" If applicable, add the following below this CDDL HEADER, with the
+.\" fields enclosed by brackets "[]" replaced with your own identifying
+.\" information: Portions Copyright [yyyy] [name of copyright owner]
+.\"
+.\" CDDL HEADER END
+.if t .ds a \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'a
+.if t .ds o \v'-0.55m'\h'0.00n'\z.\h'0.45n'\z.\v'0.55m'\h'-0.45n'o
+.if t .ds u \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'u
+.if t .ds A \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'A
+.if t .ds O \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'O
+.if t .ds U \v'-0.77m'\h'0.30n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.75n'U
+.if t .ds s \\(*b
+.if t .ds S SS
+.if n .ds a ae
+.if n .ds o oe
+.if n .ds u ue
+.if n .ds s sz
+.TH sccsfile 4 "2020/06/16" "SunOS 5.11" "File Formats"
+.SH NAME
+sccsfile \- format of an SCCS history file
+.SH DESCRIPTION
+
+.LP
+An SCCS file is an
+.B ASCII
+file consisting of six logical parts
+.RB ( "SCCS\ v4"
+.IR checksum , " delta table" , " usernames" ,
+.IR flags , " comments" , " body" )
+or eight logical parts
+.RB ( "SCCS\ v6"
+.IR checksum , " delta table" , " usernames" ,
+.IR "v4 flags" , " v6 flags" , " v6 metadata" ,
+.IR " comments" , " body" ):
+.sp
+.ne 3
+.TP 12
+.B checksum
+Character sum computed on the rest of the file, used for error detection.
+.sp
+.ne 3
+.TP
+.B "delta table
+Log containing version info and statistics about each delta.
+.sp
+.ne 3
+.TP
+.B usernames
+Login names and/or group IDs of users who may add deltas.
+.sp
+.ne 3
+.TP
+.B flags
+Definitions of internal keywords and configuration for user defined behavior
+.RB ( "SCCS\ v4" ).
+.sp
+.ne 3
+.TP
+.B v6 flags
+Optional further internal definitions.
+.B "SCCS\ v6
+only.
+.sp
+.ne 3
+.TP
+.B v6 metadata
+Optional global metadata.
+.B "SCCS\ v6
+only.
+.sp
+.ne 3
+.TP
+.B extensions
+This is the area where future versions of
+.B SCCS
+will add extensions.
+.sp
+.ne 3
+.TP
+.B comments
+An arbitrary descriptive information block about the file.
+.sp
+.ne 3
+.TP
+.B body
+the Actual text lines intermixed with control lines.
+This body is also known as
+.B interleaved deltas
+or
+.BR "the weave" .
+
+.LP
+Each section is described in detail below.
+.LP
+This document describes the
+.B SCCS\ v4
+history file format that has been introduced in February 1977 as well
+as the
+.B SCCS\ v6
+enhancements that have been introduced in September 2011.
+
+.br
+.ne 5
+.SS Conventions
+
+.LP
+Throughout an SCCS file there are lines which begin with the
+.B ASCII SOH
+(start of heading) character (octal 001). This character is 
+hereafter referred to as the
+.IR "control character" ,
+and will be represented as
+.RB ` ^A '.
+If a line described below is not depicted as beginning with the
+control character, it cannot do so and still be within SCCS file format.
+
+.LP
+Entries of the form 
+.I ddddd
+represent a decimal number.
+In the statistics line from the delta table, this represents a
+five digit string (a number between 00000 and 99999).
+Other numbers are not artificially limited to a specific range.
+.B Serial numbers
+and
+.B SID
+number components may be any non negative number representable by a
+signed 32 bit integer.
+.LP
+The usable range on a specific machine
+is however limited by the available virtual memory.
+This implementation needs virtual memory that is 
+approx. 100 times the highest serial number from the file.
+If a SCCS history file contains one million deltas, this implementation
+needs 100 MBytes of virtual memory to process the deltas.
+
+.br
+.ne 5
+.SS Checksum
+
+.LP
+The checksum is the first line of an SCCS file. The form of the line is:
+
+.LP
+.in +2
+.nf
+.RI ^Ah ddddd
+.fi
+.in -2
+
+.LP
+The value of the checksum is the low 16 bits from the signed sum of all
+characters, except those contained in the first line.
+When reading files, values computed as the unsigned sum of all characters
+are accepted too.
+The
+.B ^Ah
+provides a 16 bit
+.I magic number
+of (octal) 064001 in PDP-byteorder and 000550 in Motorola-byteorder
+("\e001\e150").
+.br
+.ne 5
+.SS SCCS v6 Checksum
+.LP
+.B SCCS\ v6
+introduces a different checksum line:
+.LP
+.in +2
+.nf
+.RI ^AhV6,sum= ddddd
+.fi
+.in -2
+.LP
+The checksum line was changed in order to prevent historic SCCS
+implementations from accidentally ignoring project-related (project-global)
+locks. It permits future versions to decide on different checksum
+algorithms without a need to again introduce a new history file format.
+.LP
+In
+.BR "SCCS\ v6" ,
+the
+.B ^Ah
+magic is not directly followed by the checksum but by the letter
+.B V
+that is followed by the SCCS version number. The version number is followed by
+a comma and the checksum algorithm name. The string
+.B sum
+is interpreted as the
+.B SCCS\ v4
+checksum method. The
+.B SCCS\ v4
+checksum entry must
+directly follow the SCCS version number.
+.LP
+Further checksums may be added in the future, e.g.:
+.LP
+.in +2
+.nf
+.RI ^AhV6,sum= ddddd ,md5= hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh
+.fi
+.in -2
+.LP
+but the
+.B sum=
+entry is mandatory.
+.B SCCS\ v6
+currently does not implement 
+checksum algorithms other than 
+.BR sum .
+Other entries are currently ignored when reading and silently discarded when
+copying or modifying files.
+
+.br
+.ne 5
+.SS Delta Table
+
+.LP
+The delta table consists of a variable number of entries of the form:
+
+.LP
+.in +2
+.nf
+.RI "^As " inserted \|/ deleted \|/ unchanged
+.RI "^Ad " "type  sid  yr"  / mo / "da \c
+.IR hr : mi : "se  \c
+.I "username  serial-number \e
+.I predecessor-sn
+.RI "^Ai " include-list
+.RI "^Ax " exclude-list
+.RI "^Ag " ignored-list
+.RI "^Am " mr-number
+\&...
+.RI "^Ac " comments " ...
+\&...
+^Ae 
+.fi
+.in -2
+.sp
+
+.LP
+The lines with the entry type
+.BR ^As , " ^Ad"
+and
+.B ^Ae
+are mandatory.
+.LP
+The first line
+.RB ( ^As )
+contains the number of lines
+.IR inserted \|/ deleted \|/ unchanged
+respectively.
+The actual values for
+.IR inserted \|/ deleted \|/ unchanged
+are five digit numbers.
+If an actual value is greater than 99999, then it is replaced by 99999.
+.br
+.ne 11
+.LP
+The second line
+.RB ( ^Ad )
+contains the
+.I type
+of the delta in the second word:
+.RS
+.TP
+.B D
+for a normal delta
+.TP
+.B R
+for a removed delta
+.TP
+.B U
+for a delta that causes to unlink the
+.B g-file
+.sp
+If this delta type is used for the initial release of a
+.B SCCS
+history file, the default
+.B SID
+is set to
+.B 1.0
+to permit the first delta with data to have the typical
+.BR 1.1 .
+.RE
+.sp
+The delta table type is followed by
+the
+.I SCCS ID
+.RB ( SID )
+of the delta, the
+.I date
+and
+.I time
+of creation of the delta as local time, the
+.I user-name
+corresponding to
+the real user ID at the time the delta was created, and the
+.I serial numbers
+of the delta and its predecessor, respectively.
+.sp
+The
+.I year
+is either represented
+by a two digit year in the range 69..99 for 1969..1999 or 00..68 for
+2000..2068 or by a four digit year number. Year numbers before 1969 are
+currently not supported.
+Older SCCS versions may not be able to understand four digit year numbers.
+.sp
+The
+.I user-name
+must not contain a
+.B space
+character, as
+.B space
+is the field separator in this file format.
+Since some non-POSIX platforms permit a space in the username, it is converted
+into a
+.RB ` _ '
+by the SCCS software before storing it in the history file.
+
+.LP
+The
+.BR ^Ai ,
+.BR ^Ax ,
+and 
+.B ^Ag
+lines contain the serial numbers
+of deltas
+.BR included ,
+.BR excluded ,
+and
+.BR ignored ,
+respectively.
+These lines do not always appear.
+.LP
+The
+.B ^Am
+lines (optional) each contain one MR number associated with the delta.
+.sp
+The
+.B ^Ac
+lines contain comments associated with the delta.
+If there is more than one comment line, each comment line appears after a
+separate
+.B ^Ac
+lead in.
+.LP
+The
+.B ^Ae
+line ends the current delta table entry.
+
+.br
+.ne 8
+.SS SCCS v6 Delta Table
+.LP
+.B SCCS\ v6
+uses an enhanced delta table:
+.LP
+.in +2
+.nf
+.RI "^As " inserted \|/ deleted / unchanged
+.RI "^Ad " "type  sid  yr" / mo / "da \c
+.IR hr : mi : se\c
+.RI [. ss ]+- "hhmm username \e
+.I "serial-number predecessor-sn
+.RI "^Ai " include-list
+.RI "^Ax " exclude-list
+.RI "^Ag " ignored-list
+.RI "^Am " mr-number
+\&...
+.RI "^AS " "sid-specific metadata
+\&...
+.RI "^Ac " comments " ...
+\&...
+^Ae 
+.fi
+.in -2
+.sp
+.LP
+The second line
+.RB ( ^Ad )
+must have a four digit year number,
+may add sub-second time stamp granularity and must have a time zone offset.
+.LP
+Optional sub-second time stamp granularity is introduced by a dot
+.RB ` . '
+and adds one to nine decimal digits that represent a fraction of a second
+up to nanosecond granularity. This number must be non-negative.
+.LP
+The time zone offset starts with a 
+.RB ` + '
+or a
+.RB ` - ',
+the value
+.B 0000
+starts with a
+.RB ` + ',
+negative values start with a
+.RB ` - '.
+Positive values are east to GMT.
+The first two decimal digits represent the hour part of the GMT offset, the
+last two decimal digits represent the minute part of the GMT offset. A
+granularity less than a minute cannot be represented.
+.br
+.ne 5
+.LP
+The date and time part represents local time as in
+.B SCCS\ v4
+entries, but the mandatory timezone offset makes the time unique.
+The time stamp:
+.LP
+.in +2
+.nf
+2012/02/01 13:00:00+0100
+.fi
+.in -2
+.LP
+represents 2012, the first of February 12:00 GMT which is 13:00 MET.
+
+.LP
+The
+.B ^AS
+lines introduce SID specific
+.B SCCS\ v6
+extensions.
+SID specific extension lines are in name/value format and take the form:
+.LP
+.RS
+ ^AS
+.B name
+.I optional value text
+.RE
+.br
+.ne 8
+.LP
+The following
+.B name
+parameters are defined:
+.LP
+.RS
+.br
+.ne 5
+.TP 10
+.BI p " path
+Record the current path of the
+.B g-file
+relatively to the project's file set home directory. A
+.B path
+entry only appears in case a
+.B rename
+or
+.B remove
+operation has been applied to the file.
+.sp
+The
+.B project set home
+is a directory that holds a directory
+.B .sccs
+for project specific SCCS metadata. The location of this directory 
+.B .sccs
+is searched for by
+scanning the filesystem towards the root directory, starting from the
+current working directory. All files that belong to a project must be
+below the project's file set home directory.
+.sp
+See also the description for the same keyword in the section for 
+global meta data, where the the initial file name is recorded.
+.TP 10
+.BI s " nnnnn
+A SID specific additional checksum.
+The value of the checksum is the low 16 bits from the unsigned
+sum of all characters in the SID specific file content as retrieved by
+.B `get \-e'
+(without keyword expansion).
+If the file is archived UU-encoded (see 
+.B `e'
+flag), the checksum is computed on the UU-encoded text and not
+on the original file.
+.RE
+.LP
+The data format in the extended SCCS delta entry
+.RB ( ^Ad )
+and the SCCS SID specific metadata
+.RB ( ^AS )
+is not accepted by historic SCCS implementations.
+When converting a
+.B SCCS\ v6
+history file back to a
+.B SCCS\ v4
+history file,
+these entries are converted into special comment at the beginning of the
+comment section. While converting, a copy of the unmodified
+.B ^Ad
+entry is kept as
+.B ^Ac_d
+and
+.B ^AS
+is turned into
+.BR ^Ac_S .
+
+.br
+.ne 5
+.SS User Names
+
+.LP
+The list of user-names and/or numerical group IDs of users who may add deltas
+to the file, separated by NEWLINE characters. The lines containing these
+login names and/or numerical group IDs are surrounded by the bracketing lines
+.B ^Au
+and
+.BR ^AU .
+An empty list allows anyone to make a delta.
+
+.br
+.ne 5
+.SS Flags
+
+.LP
+Flags are keywords that are used internally (see 
+.BR sccs-admin (1)
+for more information on their use). 
+Each flag line takes the form:
+
+.LP
+.RS
+ ^Af
+.B flag
+.I optional text
+.RE
+.LP
+Flags may be selected from the set of 26 lower case characters in the range
+.RB ` a '..` z '.
+Historical SCCS implementations will dump core in case a
+character outside the specified range appears as flag character.
+
+.LP
+The following flags are defined in order of appearance:
+.ne 3
+.TP 24
+.BI "^Af t " type-of-program
+Defines the replacement for the
+.B %\&Y%
+ID keyword.
+.ne 3
+.TP
+.BI "^Af v " program-name
+Controls prompting for MR numbers in addition to comments. If the optional
+text is present, it defines an MR number validity checking program.
+.sp
+The
+.B v
+flag and the
+.B z
+flag are mutually exclusive.
+.ne 3
+.TP
+.BI "^Af i\fR [" value\fR]
+Indicates that the
+.RB `  "No id keywords" '
+message is to generate an error that terminates the SCCS command.
+Otherwise, the message is treated as a warning only.
+.sp
+If the parameter
+.I value
+to the
+.RB ` i '
+flag is not empty, then it holds a line fragment with keywords
+starting with a
+.RB ` "%" ',
+e.g.
+.br
+.RB "        `" "%\&Z%%\&M%	%\&I% %\&E%" '
+.br
+This line fragment needs to exactly match a part of a line in the file
+and to result in expanded keywords. Otherwise an attempt to check in a 
+new delta will fail.
+The parameter to the
+.RB ` i '
+flag is a
+.B \s-1SUN\s+1
+extension.
+.ne 3
+.TP
+.B ^Af b
+Indicates that the
+.B \-b
+option may be used with the SCCS
+.B get
+command to create a branch in the delta tree.
+.ne 3
+.TP
+.BI "^Af m " module-name
+Defines the first choice for the replacement text of the
+.B %\&M%
+ID keyword.
+.ne 3
+.TP
+.BI "^Af f " floor
+Defines the "floor" release, that is, the release below which no deltas
+may be added.
+.ne 3
+.TP
+.BI "^Af c " ceiling
+Defines the "ceiling" release, that is, the release above which no deltas
+may be added.
+.ne 3
+.TP
+.BI "^Af d " default-sid
+The
+.B d
+flag defines the default SID to be used when none is specified on an SCCS
+.B get
+command.
+.ne 3
+.TP
+.B ^Af n
+The
+.B n
+flag enables the SCCS
+.B delta
+command to insert a "null" delta (a delta that applies
+.I no
+changes) in those releases that are skipped when a delta is made in a
+.I new
+release (for example,
+when delta 5.1 is made after delta 2.7, releases 3 and 4 are skipped).
+.ne 3
+.TP
+.B ^Af j
+Enables concurrent
+.B get \-e
+calls for editing on the same base
+.B SID
+of an SCCS file.
+This allows multiple concurrent updates to take place on the same version
+of the SCCS file.
+.ne 3
+.TP
+.BI "^Af l " lock-releases
+Defines a list of releases that are locked against editing.
+.ne 3
+.TP
+.BI "^Af q " user-defined
+Defines the replacement for the
+.B %\&Q%
+ID keyword.
+.ne 3
+.TP
+.BR "^Af e 0" | 1
+The
+.B e
+flag indicates whether a source file is encoded or not. A
+.B 1
+indicates that the file is encoded.
+Source files need to be encoded when they contain control characters,
+or when they do not end with a NEWLINE. The
+.B e
+flag allows files that contain binary data to be checked in.
+.ne 3
+.TP
+.BI "^Af z " application
+The name of an
+.B application
+for the
+.B CMF
+enhancements.
+.B CMF
+enhancements are currently undocumented and it is not known
+how they are expected to work.
+.sp
+The
+.B v
+flag and the
+.B z
+flag are mutually exclusive.
+.ne 3
+.TP
+.BI "^Af s " nnn
+The number of lines to be scanned for keyword expansion. 
+.sp
+This flag is a
+.B \s-1SUN\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.ne 3
+.TP
+.BR "^Af x SCHILY" | 0
+If the value of the
+.B `x'
+flag is set to
+.BR `SCHILY' ,
+enable 
+.B sccs
+extensions that are not implemented in classical 
+.B sccs
+variants. If the
+.B `x'
+flag is enabled, the keywords
+.BR %\&d\&% ", " %\&e\&% ", " %\&g\&% 
+and
+.B %\&h\&%
+are expanded even though not explicitly enabled by the
+.B `y'
+flag.
+.sp
+This flag is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs 
+implementations. 
+.sp
+This version of SCCS implements read only compatibility support for a SCO SCCS
+extension that sets the executable bit in the file permissions of a
+gotten file if the
+.BR x -flag
+was set in the history file with no parameter. This version of SCCS
+does not allow to set this variant of the
+.BR x -flag
+in the history file.
+If you like to get executable files from SCCS, set the executable
+bit in the file permissions of the history file.
+.sp
+If this version of SCCS is used to create the history file and the executable
+bit was set in the original file, SCCS automatically sets the executable bit
+in the history file and thus retains the executable bit in the gotten file.
+
+.ne 5
+.TP
+.BI "^Af y " "val .\|.\|.
+The list of sccs keywords to be expanded.
+If the
+.BR y -flag
+is missing in the sccs historyfile, all sccs keywords are expanded.
+If the flag is present but the list is empty, no keyword is expanded
+and no
+.RB `  "No id keywords" '
+message is generated.
+The value
+.RB `  * '
+controls the 
+expansion of the
+.BI %\&sccs.include. filename \&%
+keyword.
+.sp
+This flag is a
+.BR \s-1SUN\s+1 / SCHILY
+extension that does not exist in historic
+.B sccs 
+implementations. 
+
+.br
+.ne 6
+.SS SCCS v6 Flags
+.LP
+.B SCCS\ v6
+flags are additional keywords that are used internally (see 
+.BR sccs-admin (1)
+for more information on their use).
+Each flag line takes the form:
+.LP
+.RS
+ ^AF
+.B flag
+.I optional text
+.RE
+.LP
+No
+.B SCCS\ v6
+flags are currently defined.
+.LP
+Historical SCCS implementations do not complain about
+.B SCCS\ v6
+flags when
+reading SCCS history files and retain
+.B SCCS\ v6
+flags when modifying
+history files.
+This is why
+.B SCCS\ v6
+flags may be kept unmodified when converting a
+.B SCCS\ v6
+history file back to a
+.B SCCS\ v4
+history file.
+
+.br
+.ne 6
+.SS SCCS v6 Metadata
+.LP
+.B SCCS\ v6
+metadata is additional global metadata that is used internally (see 
+.BR sccs-admin (1)
+for more information on it's use).
+Each metadata line takes the form:
+.LP
+.RS
+ ^AG
+.B keyword
+.I optional text
+.RE
+.br
+.ne 8
+.LP
+The following
+.B keywords
+are defined:
+.LP
+.RS
+.br
+.ne 6
+.TP 10
+.BI p " path
+Record the initial path of the
+.B g-file
+relatively to the project's file set home directory. Once set up, this name
+must never change.
+.sp
+See also the description for the project set home in the documentation for the
+same keyword in the section for SID specific meta data of the delta table.
+In case of a rename, the new file name is recorded in in the SID specific
+meta data of the delta table.
+.br
+.ne 6
+.TP
+.BI r " random
+A unified pseudo random number (see also
+.BR changeset (4))
+that is used to help to identify single files
+across renames during the lifetime of the sccs history.
+.sp
+The pseudo random number is a hexadecimal string that represents the
+microseconds since
+Jul\ 13\ 11:01:20\ 2012\ GMT
+when initially creating the
+sccs history for a specific file.
+Including microseconds gives sufficient randomness
+to make clashes rare.
+.sp
+With a 32 bit signed
+.BR time_t ,
+52 bits in the pseudo random number are sufficient.
+With a 64 bit pseudo random number, more than 500000 years are covered.
+.sp
+The minimal length for the pseudo random
+number is thirteen hexadecimal characters. If the number could be represented
+with less digits, it is left filled with zeroes. This allows to have a unique
+length for this number until
+Mar\ 31\ 10:55:07\ 2155\ GMT.
+.RE
+.LP
+The
+.B random
+metadata is mandatory for
+.B SCCS\ v6
+history files. The initial path tag may be
+recorded later but before the changeset file is created.
+The value for this metadata tags must not change.
+.LP
+Historical SCCS implementations do not complain about
+.B SCCS\ v6
+metadata when
+reading SCCS history files and retain
+.B SCCS\ v6
+metadata when modifying
+history files.
+This is why
+.B SCCS\ v6
+metadata may be kept unmodified when converting a
+.B SCCS\ v6
+history file back to a
+.B SCCS\ v4
+history file.
+
+
+.br
+.ne 5
+.SS Extensions
+
+.LP
+This is the area where future versions of
+.B SCCS
+will add extensions.
+.LP
+.B SCCS
+reserves the area just before the
+.B comments
+section for extensions by only checking the content at this location for
+syntactic correctness. Unknown elements at this location are still copied
+and kept intact when the historyfile is modified.
+.B SCCS\ v6
+already introduced
+.B SCCS\ v6 flags
+and global
+.B "SCCS\ v6 metadata"
+as extensions, so future extensions must appear past the
+.BR "SCCS\ v6 metadata" .
+
+.br
+.ne 5
+.SS Comments
+
+.LP
+Arbitrary text surrounded by the bracketing lines
+.B ^At
+and
+.BR ^AT .
+The comments section typically will contain a description of 
+the file's purpose.
+
+.br
+.ne 5
+.SS Body
+
+.LP
+The body consists of text lines and control lines.
+Text lines do not begin with the control character, unless they
+are using
+.B SCCS\ v6
+escape extensions. Control lines always begin with the
+control character.
+.LP
+There are three kinds of control lines:
+.IR insert ,
+.IR delete ,
+and
+.IR end ,
+represented by:
+
+.LP
+.in +2
+.nf
+.BI ^AI " ddddd
+.BI ^AD " ddddd
+.BI ^AE " ddddd
+.fi
+.in -2
+
+.LP
+respectively.
+The digit string is the serial number corresponding to the delta for
+the control line.
+.LP
+An inserted block of lines looks this way:
+.LP
+.nf
+.BI ^AI " ddddd
+.I block of data
+.BI ^AE " ddddd
+.fi
+.LP
+A deleted block of lines looks this way:
+.LP
+.nf
+.BI ^AD " ddddd
+.I block of data
+.BI ^AE " ddddd
+.fi
+.LP
+The
+.B block of data
+may contain control lines with other serial numbers.
+
+.br
+.ne 5
+.SS "SCCS\ v6 Body escape extensions"
+.LP
+There are two additional types of text lines with a control character at the
+beginning that represent features introduced by
+.BR "SCCS\ v6" .
+These features are not understood by SCCS implementations that support the
+.B SCCS\ v4
+history file format only.
+.LP
+.RS +2
+.TP 10
+.B ^A^A
+A line in the interleaved delta block that begins with two control characters
+represents a text line that begins at the second control character.
+.TP
+.B ^AN
+A line in the interleaved delta block that begins with the
+.B "^AN"
+sequence represents a text line that does not end with a newline character.
+A line in the form
+.B "^AN^Atext"
+is extracted as
+.B "^Atext"
+without a need to add another quote.
+.RE
+
+.br
+.ne 5
+.SH FILES
+.br
+.ne 3
+.TP 12
+.B ``g-file''
+version retrieved by
+.B get
+
+.br
+.ne 2
+.TP
+.BI d. file
+temporary file created by the
+.BR delta (1)
+program with the content of the previous version, 
+used to compute differences to the current version
+
+.TP
+.BI e. file
+temporary file to hold an uuencoded version of the
+.B g-file
+in case of an encoded history file.
+Used by
+.BR admin (1)
+and
+.BR delta (1).
+
+.br
+.ne 3
+.TP
+.BI l. file
+file containing extracted delta table info
+
+.sp
+.ne 3
+.TP
+.BI o. file
+saved original version of the history file,
+created by
+.BR sccscvt (1).
+
+.br
+.ne 3
+.TP
+.BI p. file
+permissions (lock) file for checked-out versions.
+The
+.BR p. file
+has an arbitrary number of lines, each is related to a
+.B get \-e
+call. Each line has the following structure:
+.sp
+.ne 3
+.RS +15
+.I old-sid
+.I new-sid
+.I username
+.I date
+.IR time " \e
+.br
+[
+.BI -i i-arg
+][
+.BI -x x-arg
+][
+.BI -z z-arg
+]
+.RE
+.RS +12
+.LP
+The
+.I old-sid
+is the SID that was checked out with
+.BR "get \-e" ,
+the
+.I new-sid
+is the SID that will be used for the new version when
+.B delta
+is called. The
+.I username
+is the user-name corresponding to the real user ID at the time
+.B get \-e
+was called. The
+.I date
+and
+.I time
+fields are in the same format as used in the delta table of the
+.BI s. file
+as described in
+.BR sccsfile (4)
+for
+.B SCCS
+v4.
+In order to grant POSIX compatibility, a two digit year is used
+between 1969 and 2068. For years outside that range, a four digit
+year is used.
+The following fields are only present when one or more of the
+.B \-i
+.B \-x
+or
+.B \-z
+options have been specified on the command line, they refer to the
+list of included and excluded deltas or to the CMR list from the
+NSE enhancements.
+.RE
+
+.br
+.ne 3
+.TP
+.BI q. file
+temporary copy of the 
+.BR p. file; 
+renamed to the 
+.BR p. file 
+after completion 
+
+.br
+.ne 3
+.TP
+.BI s. file
+.B SCCS
+history file, see
+.BR sccsfile (4).
+
+.sp
+.ne 2
+.TP
+.BI SCCS/s. file
+history file in SCCS subdirectory
+
+.sp
+.ne 2
+.TP
+.BI x. file
+temporary copy of the
+.BR s. file;
+renamed to the
+.BR s. file
+after completion.
+Used by
+.BR admin (1),
+.BR cdc (1),
+.BR delta (1),
+.BR rmdel (1),
+and
+.BR sccscvt (1).
+
+.br
+.ne 3
+.TP
+.BI z. file
+temporary lock file contains the binary process id in host byte order 
+followed by the host name
+
+.br
+.ne 3
+.TP
+.IB projecthome /.sccs/SCCS/s.changeset
+The project specific changeset file is in the directory
+.B .sccs
+in the project set home directory.
+Only the 
+.B s.changeset
+file is present, a related
+.B g-file
+does not exist.
+
+.br
+.ne 3
+.TP
+.B dump.core
+If the file
+.B dump.core
+exists in the current directory and a fatal signal is received, a coredump
+is initiated via
+.BR abort (3).
+
+.br
+.ne 3
+.TP
+.B /usr/ccs/include/
+If the environment
+.B SCCS_INCLUDEPATH
+does not exist, include files for the
+.BI %\&sccs.include. filename \&%
+keyword directive are searched in this directory.
+
+
+.br
+.ne 5
+.SH SEE ALSO
+.nh
+.LP
+.BR sccs (1),
+.BR sccs\-admin (1),
+.BR sccs\-cdc (1),
+.BR sccs\-comb (1),
+.BR sccs\-cvt (1),
+.BR sccs\-delta (1),
+.BR sccs\-get (1),
+.BR sccs\-help (1),
+.BR sccs\-log (1),
+.BR sccs\-prs (1),
+.BR sccs\-prt (1),
+.BR sccs\-rmdel (1),
+.BR sccs\-sact (1),
+.BR sccs\-sccsdiff (1),
+.BR sccs\-unget (1),
+.BR sccs\-val (1),
+.BR bdiff (1), 
+.BR diff (1), 
+.BR what (1),
+.BR sccschangeset (4).
+.\".BR sccsfile (4).
+.hy 14
+
+.SH NOTES
+.LP
+The following SCCS programs
+.B write
+or
+.B modify
+SCCS history files and create
+.B lock files
+for the SCCS history files:
+.TP 11
+.BR admin (1)
+create and administer SCCS history files
+.TP
+.BR cdc (1)
+change the delta commentary of an SCCS delta
+.TP
+.BR delta (1)
+make a delta to an SCCS file
+.TP
+.BR rmdel (1)
+remove a delta from an SCCS file
+.TP
+.BR sccscvt (1)
+convert history files between SCCS v4 and SCCS v6
+
+.br
+.ne 5
+.LP
+The following SCCS programs do not write or modify SCCS
+history files but create
+.B lock files
+for SCCS history files since they modify
+.BI p. files\c
+:
+.TP 11
+.TP
+.BR get (1)
+when using the option
+.B \-e
+to check out a file for editing
+.TP
+.BR unget (1)
+undo a previous get of an SCCS file
+
+.SH BUGS
+.LP
+.B SCCS\ v4
+uses local time without a timezone offset. If a delta is created less
+than an hour after switching from DST to non-DST, it may look as if the clock
+is going backwards.
+.B SCCS\ v6
+fixes this problem by introducing a mandatory timezone offset.
+
+.SH AUTHORS
+The
+.B SCCS
+suite was originally written by Marc J. Rochkind at Bell Labs in 1972.
+Release 4.0 of
+.BR SCCS ,
+introducing new versions of the programs
+.BR admin (1),
+.BR get (1),
+.BR prt (1),
+and
+.BR delta (1)
+was published on February 18, 1977; it introduced the new text based
+.B SCCS\ v4
+history file format (previous
+.B SCCS
+releases used a binary history file format).
+The
+.B SCCS
+suite
+was later maintained by various people at AT&T and Sun Microsystems.
+Since 2006, the
+.B SCCS
+suite is maintained by J\*org Schilling.

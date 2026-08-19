@@ -40,7 +40,6 @@ unsigned short wBitsPerSample = 16;
 void writeaiffheader(FILE *fdest, long track_length)
 {
 unsigned long  source_length, total_length;
-unsigned char  buf[4];
 unsigned long  aCommSize = 18;
 unsigned short aChannels = 2;
 unsigned long  aNumFrames;
@@ -80,7 +79,7 @@ unsigned long  aBlockSize = 0;
 
 void write_ieee_extended(FILE *fdest, double x)
 {
-	char buf[10];
+    unsigned char buf[10];
 	ConvertToIeeeExtended(x, buf);
 	/*
 	report("converted %g to %o %o %o %o %o %o %o %o %o %o",
@@ -134,7 +133,7 @@ void write_ieee_extended(FILE *fdest, double x)
 
 # define FloatToUnsigned(f)      ((unsigned long)(((long)(f - 2147483648.0)) + 2147483647L) + 1)
 
-void ConvertToIeeeExtended(double num, char *bytes)
+void ConvertToIeeeExtended(double num, unsigned char *bytes)
 {
     int    sign;
     int expon;
@@ -171,16 +170,15 @@ void ConvertToIeeeExtended(double num, char *bytes)
             loMant = FloatToUnsigned(fsMant);
         }
     }
-    
-    bytes[0] = expon >> 8;
-    bytes[1] = expon;
-    bytes[2] = hiMant >> 24;
-    bytes[3] = hiMant >> 16;
-    bytes[4] = hiMant >> 8;
-    bytes[5] = hiMant;
-    bytes[6] = loMant >> 24;
-    bytes[7] = loMant >> 16;
-    bytes[8] = loMant >> 8;
-    bytes[9] = loMant;
+    bytes[0] = (unsigned char)(((unsigned int)expon >> 8) & 0xFFU);
+    bytes[1] = (unsigned char)((unsigned int)expon & 0xFFU);
+    bytes[2] = (unsigned char)((hiMant >> 24) & 0xFFUL);
+    bytes[3] = (unsigned char)((hiMant >> 16) & 0xFFUL);
+    bytes[4] = (unsigned char)((hiMant >> 8) & 0xFFUL);
+    bytes[5] = (unsigned char)(hiMant & 0xFFUL);
+    bytes[6] = (unsigned char)((loMant >> 24) & 0xFFUL);
+    bytes[7] = (unsigned char)((loMant >> 16) & 0xFFUL);
+    bytes[8] = (unsigned char)((loMant >> 8) & 0xFFUL);
+    bytes[9] = (unsigned char)(loMant & 0xFFUL);
 }
 

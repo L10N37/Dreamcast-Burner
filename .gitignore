@@ -3,6 +3,7 @@ dist/
 out/
 .vs/
 release/
+backup/
 *.zip
 *.log
 CMakeCache.txt
@@ -10,3 +11,14 @@ CMakeFiles/
 .vscode/
 *.old
 tools/.embedded/
+diagnostics/
+pwsh/
+tools/burnermax-dev/
+tools/cdrtools-retroburner-dev/
+tools/cdrtools-schily-source-baseline/
+tools/firmware-dev/
+tools/imgburn-blackbox/
+tools/retrobeam-dev/
+*.obj
+
+external/schilytools/**/OBJ/

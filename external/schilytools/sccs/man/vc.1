@@ -1,0 +1,492 @@
+'\" te
+.\" @(#)vc.1	1.15 18/12/18 Copyright 2011-2018 J. Schilling
+.\" Copyright 1989 AT&T
+.\" Copyright (c) 1990, Sun Microsystems, Inc.  All Rights Reserved
+.\" Copyright (c) 2011-2018, J. Schilling
+.\"
+.\" CDDL HEADER START
+.\"
+.\" The contents of this file are subject to the terms of the
+.\" Common Development and Distribution License ("CDDL"), version 1.0.
+.\" You may use this file only in accordance with the terms of version
+.\" 1.0 of the CDDL.
+.\"
+.\" A full copy of the text of the CDDL should have accompanied this
+.\" source.  A copy of the CDDL is also available via the Internet at
+.\" http://www.opensource.org/licenses/cddl1.txt
+.\"
+.\" When distributing Covered Code, include this CDDL HEADER in each
+.\" file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+.\" If applicable, add the following below this CDDL HEADER, with the
+.\" fields enclosed by brackets "[]" replaced with your own identifying
+.\" information: Portions Copyright [yyyy] [name of copyright owner]
+.\"
+.\" CDDL HEADER END
+.TH vc 1 "2018/12/18" "SunOS 5.11" "User Commands"
+.SH NAME
+vc \- version control
+.SH SYNOPSIS
+.LP
+.B vc
+.RB [ \-a ]
+.RB [ \-t ]
+.RB [ \-c
+.IR char ]
+.RB [ \-s ]
+.RI [ keyword=value ...\  keyword=value ]
+
+.SH DESCRIPTION
+.sp
+.LP
+The
+.B vc
+command copies lines from the standard input to the standard output under
+control of its arguments and of ``control statements'' encountered in the
+standard input.
+In the
+process of performing the copy operation, user-declared
+.I keyword
+may be replaced by their string
+.I value
+when they appear in plain text and/or control
+statements.
+.sp
+.LP
+The copying of lines from the standard input to the standard output is
+conditional,
+based on tests (in control statements) of keyword values specified in
+control statements or as
+.B vc
+command arguments.
+.sp
+.LP
+A control statement is a single line beginning with a control character,
+except as modified by the
+.B \-t
+keyletter (see below).
+The default control character is colon
+.RB ( : ),
+except as modified by the
+.B \-c
+keyletter (see below).
+Input lines beginning with a backslash
+.RB ( \e )
+followed by a control character are not control lines and are copied
+to the standard output with the backslash removed.
+Lines beginning with a backslash followed by a non-control character
+are copied in their entirety.
+.sp
+.LP
+A keyword is composed of alphanumerics; the first must be alphabetic.
+A value is any
+.B ASCII
+string that can be created with
+.BR ed;
+a numeric
+value is an unsigned string of digits.
+Keyword values may not contain blanks or tabs.
+.sp
+.LP
+Replacement of keywords by values is done whenever a keyword surrounded by
+control characters is encountered on a version control statement.
+The
+.B \-a
+keyletter (see below) forces replacement
+of keywords in all lines of text.
+An uninterpreted control character may be included in a value by preceding
+it with
+.BR \e \&.
+If a literal
+.B \e
+is desired, then it
+too must be preceded by
+.BR \e \&.
+.SH OPTIONS
+.sp
+.LP
+The following options are supported:
+.br
+.ne 3
+.TP 10n
+.B \-a
+Forces replacement of keywords surrounded by control characters with their
+assigned value in all text lines and not just in
+.B vc
+statements.
+
+.br
+.ne 3
+.TP
+.B \-t
+All characters from the beginning of a line up to and including the first
+tab character are ignored for the purpose of detecting a control statement.
+If a control statement is found, all characters up to and including the
+tab are discarded.
+
+.br
+.ne 3
+.TP
+.BI \-c char
+Specifies a control character to be used in place of the
+.RB `` : ''
+default.
+
+.br
+.ne 3
+.TP
+.B \-s
+Silences warning messages (not error) that are normally printed on the
+diagnostic output.
+
+.sp
+.LP
+.B vc
+recognizes the following version control statements:
+.br
+.ne 3
+.TP 4n
+\fB:dcl \fIkeyword\fR[\fB, \fR...\fB, \fIkeyword\fR]
+Declare keywords.
+All keywords must be declared.
+
+.br
+.ne 3
+.TP
+\fB:asg \fIkeyword\fB=\fR\fIvalue\fR
+Assign values to keywords.
+An
+.B asg
+statement overrides the assignment for the corresponding keyword on the
+.B vc
+command line and all previous
+.B asg
+statements for that keyword.
+Keywords that are declared
+but are not assigned values have null values.
+
+.br
+.ne 3
+.PD 0
+.TP
+.BI ":if " condition
+.TP
+.B \&.\|.\|.
+.TP
+.B :end
+.PD
+Skip lines of the standard input.
+If the condition is true, all lines between the
+.B if
+statement and the matching
+.B end
+statement are copied to the standard output.
+If the condition is false, all intervening
+lines are discarded, including control statements.
+Note: Intervening
+.B if
+statements and matching
+.B end
+statements are recognized solely for the purpose of maintaining
+the proper
+.B if-end
+matching.
+.RS 4n
+.LP
+The syntax of a condition is:
+.br
+.ne 3
+.TP 11n
+.B <cond>
+::=  [ ``\fBnot\fR'' ] \fI<or>\fR
+
+.br
+.ne 3
+.TP
+.B <or>
+::=  \fI<and> | <and> \fR``\fB|\fR'' \fI<or>\fR
+
+.br
+.ne 3
+.TP
+.B <and>
+::=  \fI<exp> | <exp> \fR``\fB&\fR\&'' \fI<and>\fR
+
+.br
+.ne 3
+.TP
+.B <exp>
+::=  ``\fB(\fR'' \fI<or> \fR``\fB)\fR'' \fI| <value> <op> <value>\fR
+
+.br
+.ne 3
+.TP
+.B <op>
+::=  ``\fB=\fR'' \fI| \fR``\fB!=\fR'' \fI| ``\fB<\fR\&'' | ``\fB>\fR''\fR
+
+.br
+.ne 3
+.TP
+.B <value>
+::=
+.I " <arbitrary ASCII string> | <numeric string>
+.LP
+The available operators and their meanings are:
+.br
+.ne 3
+.TP 7n
+.B =
+equal
+
+.br
+.ne 3
+.TP
+.B !=
+not equal
+
+.br
+.ne 3
+.TP
+.B &
+and
+
+.br
+.ne 3
+.TP
+.B |
+or
+
+.br
+.ne 3
+.TP
+.B >
+greater than
+
+.br
+.ne 3
+.TP
+.B <
+less than
+
+.br
+.ne 3
+.TP
+.B ()
+used for logical groupings
+
+.br
+.ne 3
+.TP
+.B not
+may only occur immediately after the
+.BR if ,
+and when present, inverts the value of the entire condition
+.LP
+The
+.B >
+and
+.B <
+operate only on unsigned integer values (for example,
+.B ": 012 > 12
+is false).
+All other operators take strings as arguments (for
+example,
+.B ": 012 != 12
+is true).
+.LP
+The precedence of the operators (from highest to lowest) is:
+.br
+.ne 3
+.TP 12n
+.B "= != > <
+all of equal precedence
+
+.br
+.ne 3
+.TP
+.B &
+
+.br
+.ne 3
+.TP
+.B |
+.LP
+Parentheses may be used to alter the order of precedence.
+.LP
+Values must be separated from operators or parentheses by at least one
+blank or tab.
+.RE
+
+.br
+.ne 3
+.TP
+.BI :: text
+Replace keywords on lines that are copied to the standard output.
+The two leading control characters are removed,
+and keywords surrounded by control characters in text are replaced by their
+value before the line is copied to the output file.
+This action is independent of the
+.B \-a
+keyletter.
+
+.br
+.ne 3
+.TP
+.PD 0
+.B :on
+.TP
+.B :off
+.PD
+Turn on or off keyword replacement on all lines.
+
+.br
+.ne 3
+.TP
+.BI ":ctl " char
+Change the control character to
+.IR char .
+
+.br
+.ne 3
+.TP
+.BI ":msg " message
+Print
+.I message
+on the diagnostic output.
+
+.br
+.ne 3
+.TP
+.BI ":err " message
+Print
+.I message
+followed by:
+.sp
+.B "      ERROR: err statement on line ... (915)
+.sp
+on the diagnostic output.
+.B vc
+halts execution, and returns an exit code of
+.BR 1 .
+
+.SH ENVIRONMENT VARIABLES
+.sp
+.LP
+See
+.BR environ (5)
+for descriptions of the following environment variables that affect the
+execution of
+.BR vc (1):
+.BR LANG ,
+.BR LC_ALL ,
+.BR LC_CTYPE ,
+.BR LC_MESSAGES ,
+and
+.BR NLSPATH .
+
+.br
+.ne 4
+.TP
+.B SCCS_NO_HELP
+If set,
+.BR vc (1)
+will not automatically call
+.BR help (1)
+with the SCCS error code in order to print a more helpful
+error message. Scripts that depend on the exact error messages
+of SCCS commands should set the environment variable
+.B SCCS_NO_HELP
+and set
+.BR LC_ALL=C .
+
+.SH EXIT STATUS
+.sp
+.LP
+The following exit values are returned:
+.sp
+.ne 2
+.TP 5
+.B 0
+Successful completion.
+.sp
+.ne 2
+.TP
+.B 1
+An error occurred.
+
+.SH FILES
+
+.br
+.ne 3
+.TP
+.B dump.core
+If the file
+.B dump.core
+exists in the current directory and a fatal signal is received, a coredump
+is initiated via
+.BR abort (3).
+
+.SH ATTRIBUTES
+.sp
+.LP
+See
+.BR attributes (5)
+for descriptions of the following
+attributes:
+.sp
+
+.sp
+.TS
+tab() box;
+cw(2.75i) |cw(2.75i)
+lw(2.75i) |lw(2.75i)
+.
+ATTRIBUTE TYPEATTRIBUTE VALUE
+_
+AvailabilitySUNWsprot
+.TE
+
+.SH SEE ALSO
+.nh
+.sp
+.LP
+.BR ed (1),
+.BR attributes (5).
+.hy 14
+
+.br
+.ne 7
+.SH "SOURCE DOWNLOAD"
+A frequently updated source code for the
+.B SCCS
+suite is included in the
+.B schilytools
+project and may be retrieved from the
+.B schilytools
+project at Sourceforge at:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/
+.LP
+The download directory is:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/files/
+.LP
+Check for the
+.B schily\-*.tar.bz2
+archives.
+.LP
+Less frequently updated source code for the
+.B SCCS
+suite is at:
+.LP
+.B
+    http://sourceforge.net/projects/sccs/files/
+.LP
+Separate project informations for the
+.B SCCS
+project may be retrieved from:
+.LP
+.B
+    http://sccs.sf.net
+.br

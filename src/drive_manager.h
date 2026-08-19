@@ -27,9 +27,32 @@ struct OpticalDrive final {
     std::string mediaDescription;
     std::vector<WriteSpeed> writeSpeeds;
     std::string speedQueryMessage;
-    std::string cdrecordDevice;
+    std::string cdrecordDevice; // Legacy field name: RetroBeam/libscg address.
 
-    // Values used to mirror cdrtools' Windows SPTI bus numbering.
+    // RetroBeam capability fingerprint used by the Advanced Settings panel.
+    bool retrobeamCapabilitiesKnown = false;
+    bool burnFreeSupported = false;
+    bool forceSpeedSupported = false;
+
+    bool realTimeStreamingKnown = false;
+    bool realTimeStreamingCurrent = false;
+    bool realTimeStreamingPersistent = false;
+    bool streamRecordingSupported = false;
+    bool getPerformanceWriteSpeedSupported = false;
+    bool modePage2AWriteSpeedSupported = false;
+    bool setCdSpeedSupported = false;
+    bool readBufferCapacitySupported = false;
+
+    bool opcDescriptorCountKnown = false;
+    std::uint32_t opcDescriptorCount = 0;
+
+    bool driveBufferCapacityKnown = false;
+    std::uint32_t driveBufferCapacityBytes = 0;
+    std::uint32_t driveBufferAvailableBytes = 0;
+
+    std::string advancedCapabilityMessage;
+
+    // Values used to mirror cdrtools/RetroBeam Windows SPTI bus numbering.
     bool scsiAddressValid = false;
     std::uint16_t scsiBusKey = 0;
     std::uint8_t scsiTarget = 0;

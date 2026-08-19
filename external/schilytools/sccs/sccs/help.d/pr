@@ -1,0 +1,38 @@
+*
+* CDDL HEADER START
+*
+* The contents of this file are subject to the terms of the
+* Common Development and Distribution License (the "License").
+* You may not use this file except in compliance with the License.
+*
+* You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+* or http://www.opensolaris.org/os/licensing.
+* See the License for the specific language governing permissions
+* and limitations under the License.
+*
+* When distributing Covered Code, include this CDDL HEADER in each
+* file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+* If applicable, add the following below this CDDL HEADER, with the
+* fields enclosed by brackets "[]" replaced with your own identifying
+* information: Portions Copyright [yyyy] [name of copyright owner]
+*
+* CDDL HEADER END
+*
+* @(#)pr 1.1 11/04/30
+*
+*	Diagnostic messages for the 'prt' command
+*
+-1
+"i not allowed with s"
+You can't use both the -i and -s arguments on the same val command.
+
+The option -i tells prt to print all included serial numbers while
+the option -s tells prt to print only the first line of the delta table.
+This is in conflict.
+-2
+"c not allowed with r"
+You can't use both the -c and -r arguments on the same val command.
+
+Cutoff time (the arg to -c) and SID (the arg to -r) both specify
+a release in different ways. This is why they are conflicting
+options.

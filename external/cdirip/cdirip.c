@@ -37,8 +37,8 @@ int main( int argc, char **argv )
 
 int  i;
 char cuesheetname[13], filename[MAX_PATH], destpath[MAX_PATH];
-FILE *fsource, *fcuesheet;
-
+FILE *fsource = NULL;
+FILE *fcuesheet = NULL;
 image_s image = { 0, };
 track_s track = { 0, };
 opts_s  opts  = { 0, };
@@ -287,6 +287,8 @@ while(image.remaining_sessions > 0)
        else
             sprintf(cuesheetname,STR_TDISCN_CUE_FILENAME,image.global_current_session);
        fcuesheet = fopen(cuesheetname,"wb");
+       if (fcuesheet == NULL)
+          error_exit(ERR_SAVETRACK, cuesheetname);
        }
 
     image.remaining_tracks = image.tracks;
@@ -429,17 +431,17 @@ return 0;
 
 void savetrack(FILE *fsource, image_s *image, track_s *track, opts_s *opts, flags_s *flags)
 {
-
-unsigned long i, ii;
+long i;
+unsigned long ii;
 long track_length;
-unsigned long header_length;
+unsigned long header_length = 0;
 char tmp_val;
 int all_fine;
 char buffer[2352], filename [13];
 FILE *fdest;
 
 #ifdef _WIN32
-LARGE_INTEGER Frequency, old_count;
+LARGE_INTEGER Frequency = { 0 }, old_count = { 0 };
 #endif
 
 struct buffer_s read_buffer;
@@ -448,8 +450,14 @@ struct buffer_s write_buffer;
 #ifdef _WIN32
      if (opts->showspeed)
      {
-     QueryPerformanceFrequency(&Frequency);
-     QueryPerformanceCounter(&old_count);
+     if (!QueryPerformanceFrequency(&Frequency) ||
+         !QueryPerformanceCounter(&old_count) ||
+         Frequency.QuadPart <= 0)
+        {
+        opts->showspeed = false;
+        Frequency.QuadPart = 0;
+        old_count.QuadPart = 0;
+        }
      }
 #endif
 
@@ -614,7 +622,7 @@ struct buffer_s write_buffer;
 //////////////////////////////////////////////////////////////////////////////
 
 
-void show_counter (unsigned long i, long track_length, unsigned long image_length, long pos)
+void show_counter (long i, long track_length, unsigned long image_length, long pos)
 {
      unsigned long progress, total_progress;
 
@@ -629,15 +637,29 @@ void show_counter (unsigned long i, long track_length, unsigned long image_lengt
 
 void show_speed (unsigned long sector_size, LARGE_INTEGER Frequency, LARGE_INTEGER *old_count)
 {
-     unsigned long speed, elapsed;
+     unsigned long speed;
+     LONGLONG elapsed, speed64;
      LARGE_INTEGER PerformanceCount, last_count;
 
         QueryPerformanceCounter(&PerformanceCount);
         last_count = *old_count;
+        {
+        const LONGLONG ticks_per_ms = Frequency.QuadPart / 1000;
+        elapsed = ticks_per_ms > 0
+            ? (PerformanceCount.QuadPart - last_count.QuadPart) / ticks_per_ms
+            : 0;
+        }
+        speed64 =
+            ((LONGLONG)SHOW_INTERVAL * (LONGLONG)sector_size) /
+            (elapsed > 0 ? elapsed : 1);
 
-        elapsed = (PerformanceCount.QuadPart - last_count.QuadPart)/(Frequency.QuadPart/1000);  // in ms
-        speed = SHOW_INTERVAL*sector_size/(elapsed > 0 ? elapsed : 1);
-        printf("[Speed: %6ld KB/s]  "
+        if (speed64 <= 0)
+            speed = 0;
+        else if ((ULONGLONG)speed64 > (ULONGLONG)ULONG_MAX)
+            speed = ULONG_MAX;
+        else
+            speed = (unsigned long)speed64;
+        printf("[Speed: %6lu KB/s]  "
         "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b", speed);
 
         *old_count = PerformanceCount;

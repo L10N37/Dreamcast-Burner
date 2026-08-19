@@ -1,0 +1,15 @@
+CSWsccs: bad-location-of-file file=/opt
+CSWsccs: disallowed-path opt
+CSWsccs: disallowed-path opt/csw
+CSWsccs: disallowed-path opt/csw/bin
+CSWsccs: disallowed-path opt/csw/share
+CSWsccs: disallowed-path opt/csw/share/doc
+CSWsccs: disallowed-path opt/csw/share/man
+CSWsccs: pkginfo-opencsw-repository-missing
+CSWsccs: pkgmap-question-mark-perms-in-opt-csw /opt/csw
+CSWsccs: pkgmap-question-mark-perms-in-opt-csw /opt/csw/bin
+CSWsccs: pkgmap-question-mark-perms-in-opt-csw /opt/csw/share
+CSWsccs: pkgmap-question-mark-perms-in-opt-csw /opt/csw/share/doc
+CSWsccs: pkgmap-question-mark-perms-in-opt-csw /opt/csw/share/man
+CSWsccs: pkgmap-question-mark-perms-in-opt-csw /opt/csw/share/man/man1
+CSWsccs: pkgmap-question-mark-perms-in-opt-csw /opt/csw/share/man/man4

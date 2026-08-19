@@ -1,0 +1,255 @@
+/* @(#)scsicdb.h	2.20 06/09/13 Copyright 1986 J. Schilling */
+/*
+ *	Definitions for the SCSI Command Descriptor Block
+ *
+ *	Copyright (c) 1986 J. Schilling
+ */
+/*
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License, Version 1.0 only
+ * (the "License").  You may not use this file except in compliance
+ * with the License.
+ *
+ * See the file CDDL.Schily.txt in this distribution for details.
+ * A copy of the CDDL is also available via the Internet at
+ * http://www.opensource.org/licenses/cddl1.txt
+ *
+ * The following exceptions apply:
+ * CDDL �3.6 needs to be replaced by: "You may create a Larger Work by
+ * combining Covered Software with other code if all other code is governed by
+ * the terms of a license that is OSI approved (see www.opensource.org) and
+ * you may distribute the Larger Work as a single product. In such a case,
+ * You must make sure the requirements of this License are fulfilled for
+ * the Covered Software."
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the License file CDDL.Schily.txt from this distribution.
+ */
+
+#ifndef	_SCG_SCSICDB_H
+#define	_SCG_SCSICDB_H
+
+#ifndef  _SCHILY_UTYPES_H
+#include <schily/utypes.h>
+#endif
+
+#ifdef	__cplusplus
+extern "C" {
+#endif
+/*
+ * SCSI Operation codes.
+ */
+#define	SC_TEST_UNIT_READY	0x00
+#define	SC_REZERO_UNIT		0x01
+#define	SC_REQUEST_SENSE	0x03
+#define	SC_FORMAT		0x04
+#define	SC_FORMAT_TRACK		0x06
+#define	SC_REASSIGN_BLOCK	0x07		/* CCS only */
+#define	SC_SEEK			0x0b
+#define	SC_TRANSLATE		0x0f		/* ACB4000 only */
+#define	SC_INQUIRY		0x12		/* CCS only */
+#define	SC_MODE_SELECT		0x15
+#define	SC_RESERVE		0x16
+#define	SC_RELEASE		0x17
+#define	SC_MODE_SENSE		0x1a
+#define	SC_START		0x1b
+#define	SC_READ_DEFECT_LIST	0x37		/* CCS only, group 1 */
+#define	SC_READ_BUFFER		0x3c		/* CCS only, group 1 */
+	/*
+	 * Note, these two commands use identical command blocks for all
+	 * controllers except the Adaptec ACB 4000 which sets bit 1 of byte 1.
+	 */
+#define	SC_READ			0x08
+#define	SC_WRITE		0x0a
+#define	SC_EREAD		0x28		/* 10 byte read */
+#define	SC_EWRITE		0x2a		/* 10 byte write */
+#define	SC_WRITE_VERIFY		0x2e		/* 10 byte write+verify */
+#define	SC_WRITE_FILE_MARK	0x10
+#define	SC_UNKNOWN		0xff		/* cmd list terminator */
+
+
+/*
+ * Standard SCSI control blocks.
+ * These go in or out over the SCSI bus.
+ */
+
+#if	defined(_BIT_FIELDS_LTOH)	/* Intel byteorder */
+
+struct	scsi_g0cdb {		/* scsi group 0 command description block */
+	unsigned char	cmd;		/* command code */
+	unsigned char	high_addr : 5;	/* high part of block address */
+	unsigned char	lun	  : 3;	/* logical unit number */
+	unsigned char	mid_addr;	/* middle part of block address */
+	unsigned char	low_addr;	/* low part of block address */
+	unsigned char	count;		/* transfer length */
+	unsigned char	link	  : 1;	/* link (another command follows) */
+	unsigned char	fr	  : 1;	/* flag request (interrupt at completion) */
+	unsigned char	naca	  : 1;	/* Normal ACA (Auto Contingent Allegiance) */
+	unsigned char	rsvd	  : 3;	/* reserved */
+	unsigned char	vu_56	  : 1;	/* vendor unique (byte 5 bit 6) */
+	unsigned char	vu_57	  : 1;	/* vendor unique (byte 5 bit 7) */
+};
+
+#else	/* Motorola byteorder */
+
+struct	scsi_g0cdb {		/* scsi group 0 command description block */
+	unsigned char	cmd;		/* command code */
+	unsigned char	lun	  : 3;	/* logical unit number */
+	unsigned char	high_addr : 5;	/* high part of block address */
+	unsigned char	mid_addr;	/* middle part of block address */
+	unsigned char	low_addr;	/* low part of block address */
+	unsigned char	count;		/* transfer length */
+	unsigned char	vu_57	  : 1;	/* vendor unique (byte 5 bit 7) */
+	unsigned char	vu_56	  : 1;	/* vendor unique (byte 5 bit 6) */
+	unsigned char	rsvd	  : 3;	/* reserved */
+	unsigned char	naca	  : 1;	/* Normal ACA (Auto Contingent Allegiance) */
+	unsigned char	fr	  : 1;	/* flag request (interrupt at completion) */
+	unsigned char	link	  : 1;	/* link (another command follows) */
+};
+#endif
+
+#if	defined(_BIT_FIELDS_LTOH)	/* Intel byteorder */
+
+struct	scsi_g1cdb {		/* scsi group 1 command description block */
+	unsigned char	cmd;		/* command code */
+	unsigned char	reladr	  : 1;	/* address is relative */
+	unsigned char	res	  : 4;	/* reserved bits 1-4 of byte 1 */
+	unsigned char	lun	  : 3;	/* logical unit number */
+	unsigned char	addr[4];	/* logical block address */
+	unsigned char	res6;		/* reserved byte 6 */
+	unsigned char	count[2];	/* transfer length */
+	unsigned char	link	  : 1;	/* link (another command follows) */
+	unsigned char	fr	  : 1;	/* flag request (interrupt at completion) */
+	unsigned char	naca	  : 1;	/* Normal ACA (Auto Contingent Allegiance) */
+	unsigned char	rsvd	  : 3;	/* reserved */
+	unsigned char	vu_96	  : 1;	/* vendor unique (byte 5 bit 6) */
+	unsigned char	vu_97	  : 1;	/* vendor unique (byte 5 bit 7) */
+};
+
+#else	/* Motorola byteorder */
+
+struct	scsi_g1cdb {		/* scsi group 1 command description block */
+	unsigned char	cmd;		/* command code */
+	unsigned char	lun	  : 3;	/* logical unit number */
+	unsigned char	res	  : 4;	/* reserved bits 1-4 of byte 1 */
+	unsigned char	reladr	  : 1;	/* address is relative */
+	unsigned char	addr[4];	/* logical block address */
+	unsigned char	res6;		/* reserved byte 6 */
+	unsigned char	count[2];	/* transfer length */
+	unsigned char	vu_97	  : 1;	/* vendor unique (byte 5 bit 7) */
+	unsigned char	vu_96	  : 1;	/* vendor unique (byte 5 bit 6) */
+	unsigned char	rsvd	  : 3;	/* reserved */
+	unsigned char	naca	  : 1;	/* Normal ACA (Auto Contingent Allegiance) */
+	unsigned char	fr	  : 1;	/* flag request (interrupt at completion) */
+	unsigned char	link	  : 1;	/* link (another command follows) */
+};
+#endif
+
+#if	defined(_BIT_FIELDS_LTOH)	/* Intel byteorder */
+
+struct	scsi_g5cdb {		/* scsi group 5 command description block */
+	unsigned char	cmd;		/* command code */
+	unsigned char	reladr	  : 1;	/* address is relative */
+	unsigned char	res	  : 4;	/* reserved bits 1-4 of byte 1 */
+	unsigned char	lun	  : 3;	/* logical unit number */
+	unsigned char	addr[4];	/* logical block address */
+	unsigned char	count[4];	/* transfer length */
+	unsigned char	res10;		/* reserved byte 10 */
+	unsigned char	link	  : 1;	/* link (another command follows) */
+	unsigned char	fr	  : 1;	/* flag request (interrupt at completion) */
+	unsigned char	naca	  : 1;	/* Normal ACA (Auto Contingent Allegiance) */
+	unsigned char	rsvd	  : 3;	/* reserved */
+	unsigned char	vu_B6	  : 1;	/* vendor unique (byte B bit 6) */
+	unsigned char	vu_B7	  : 1;	/* vendor unique (byte B bit 7) */
+};
+
+#else	/* Motorola byteorder */
+
+struct	scsi_g5cdb {		/* scsi group 5 command description block */
+	unsigned char	cmd;		/* command code */
+	unsigned char	lun	  : 3;	/* logical unit number */
+	unsigned char	res	  : 4;	/* reserved bits 1-4 of byte 1 */
+	unsigned char	reladr	  : 1;	/* address is relative */
+	unsigned char	addr[4];	/* logical block address */
+	unsigned char	count[4];	/* transfer length */
+	unsigned char	res10;		/* reserved byte 10 */
+	unsigned char	vu_B7	  : 1;	/* vendor unique (byte B bit 7) */
+	unsigned char	vu_B6	  : 1;	/* vendor unique (byte B bit 6) */
+	unsigned char	rsvd	  : 3;	/* reserved */
+	unsigned char	naca	  : 1;	/* Normal ACA (Auto Contingent Allegiance) */
+	unsigned char	fr	  : 1;	/* flag request (interrupt at completion) */
+	unsigned char	link	  : 1;	/* link (another command follows) */
+};
+#endif
+
+#define	g0_cdbaddr(cdb, a)	((cdb)->high_addr   = (a) >> 16,\
+				    (cdb)->mid_addr = ((a) >> 8) & 0xFF,\
+				    (cdb)->low_addr = (a) & 0xFF)
+
+#define	g1_cdbaddr(cdb, a)	((cdb)->addr[0]    = (a) >> 24,\
+				    (cdb)->addr[1] = ((a) >> 16)& 0xFF,\
+				    (cdb)->addr[2] = ((a) >> 8) & 0xFF,\
+				    (cdb)->addr[3] = (a) & 0xFF)
+
+#define	g5_cdbaddr(cdb, a)	g1_cdbaddr(cdb, a)
+
+
+#define	g0_cdblen(cdb, len)	((cdb)->count = (len))
+
+#define	g1_cdblen(cdb, len)	((cdb)->count[0]    = ((len) >> 8) & 0xFF,\
+				    (cdb)->count[1] = (len) & 0xFF)
+
+#define	g5_cdblen(cdb, len)	((cdb)->count[0]    = (len) >> 24L,\
+				    (cdb)->count[1] = ((len) >> 16L)& 0xFF,\
+				    (cdb)->count[2] = ((len) >> 8L) & 0xFF,\
+				    (cdb)->count[3] = (len) & 0xFF)
+
+/*#define	XXXXX*/
+#ifdef	XXXXX
+#define	i_to_long(a, i)		(((unsigned char    *)(a))[0] = ((i) >> 24)& 0xFF,\
+				    ((unsigned char *)(a))[1] = ((i) >> 16)& 0xFF,\
+				    ((unsigned char *)(a))[2] = ((i) >> 8) & 0xFF,\
+				    ((unsigned char *)(a))[3] = (i) & 0xFF)
+
+#define	i_to_3_byte(a, i)	(((unsigned char    *)(a))[0] = ((i) >> 16)& 0xFF,\
+				    ((unsigned char *)(a))[1] = ((i) >> 8) & 0xFF,\
+				    ((unsigned char *)(a))[2] = (i) & 0xFF)
+
+#define	i_to_4_byte(a, i)	(((unsigned char    *)(a))[0] = ((i) >> 24)& 0xFF,\
+				    ((unsigned char *)(a))[1] = ((i) >> 16)& 0xFF,\
+				    ((unsigned char *)(a))[2] = ((i) >> 8) & 0xFF,\
+				    ((unsigned char *)(a))[3] = (i) & 0xFF)
+
+#define	i_to_short(a, i)	(((unsigned char *)(a))[0] = ((i) >> 8) & 0xFF,\
+				    ((unsigned char *)(a))[1] = (i) & 0xFF)
+
+#define	a_to_u_short(a)	((unsigned short) \
+			((((unsigned char*)    a)[1]	   & 0xFF) | \
+			    (((unsigned char*) a)[0] << 8  & 0xFF00)))
+
+#define	a_to_3_byte(a)	((unsigned long) \
+			((((unsigned char*)    a)[2]	   & 0xFF) | \
+			    (((unsigned char*) a)[1] << 8  & 0xFF00) | \
+			    (((unsigned char*) a)[0] << 16 & 0xFF0000)))
+
+#ifdef	__STDC__
+#define	a_to_u_long(a)	((unsigned long) \
+			((((unsigned char*)    a)[3]	   & 0xFF) | \
+			    (((unsigned char*) a)[2] << 8  & 0xFF00) | \
+			    (((unsigned char*) a)[1] << 16 & 0xFF0000) | \
+			    (((unsigned char*) a)[0] << 24 & 0xFF000000UL)))
+#else
+#define	a_to_u_long(a)	((unsigned long) \
+			((((unsigned char*)    a)[3]	   & 0xFF) | \
+			    (((unsigned char*) a)[2] << 8  & 0xFF00) | \
+			    (((unsigned char*) a)[1] << 16 & 0xFF0000) | \
+			    (((unsigned char*) a)[0] << 24 & 0xFF000000)))
+#endif
+#endif	/* XXXX */
+
+
+#ifdef	__cplusplus
+}
+#endif
+
+#endif	/* _SCG_SCSICDB_H */

@@ -1,0 +1,546 @@
+New features with AN-2020-09-22:
+
+This is the first localization step for the schily source consolidation. Many
+programs now (hopefully) call gettext() for all strings that need localization.
+
+-	The next step will include dgettext() calls for the libraries and the
+	missing programs
+
+-	The following step will include the extracted strings
+
+-	The last step will include German translations and install support
+	for the resulting binary message object files.
+
+----------> Please test and report compilation problems! <---------
+
+***** NOTE: As mentioned since 2004, frontends to the tools should *****
+*****		call all programs in the "C" locale		   *****
+*****		by e.g. calling: LC_ALL=C cdrecord ....		   *****
+*****		unless these frontends support localized strings   *****
+*****		used by the cdrtools with NLS support.		   *****
+
+		*** WARNING        ***
+		*** Need new smake ***
+
+	*** Due to the fact that schily-tools 2014-04-03 introduced to use new macro
+	*** expansions and a related bug fix in smake, you need a newer smake
+	*** to compile this source. If your smake is too old and aborts, ensure to
+	*** use the recent smake by calling:
+
+	cd ./psmake
+	./MAKE-all
+	cd ..
+	psmake/smake
+	psmake/smake install
+
+	The new smake version mentioned above is smake-1.2.4
+	The recent smake version is smake-1.3
+
+	*** Due to the fact that schily-tools 2018-01-26 introduced
+	*** optimizations for the Schily version of SunPro Make, you
+	*** need at least the dmake version from 2018/01/11 with support
+	*** for the "export" directive to compile with this makefile system.
+
+
+	WARNING: the new version of the isoinfo program makes use of the 
+		*at() series of functions that have been introduced by Sun
+		in August 2001 and added to POSIX.1-2008. For older platforms,
+		libschily now includes emulations for these functions but
+		these emulations have not yet been tested thoroughly.
+		Please report problems!
+
+	BUG WARNING: Please never report bugs only to Linux distributions as
+		they usually do not forward these bug reports upstream and as
+		the Linux distributions typically do not let skilled people
+		check the bugs. We did not hear about a FIFO problem in star
+		for a long time. Then a problem on Linux occurred once
+		every 6000-10000 tries but it did not happen on Solaris after
+		even 10 million tries, so it was not known besides Linux.
+
+	BUG WARNING: *** GNU make *** starts too early with parallel
+		execution (when reading Makefiles and evaluating rules for
+		"include" statements already). Since GNU make does not
+		support a concept for a correct ordering of such actions,
+		you need to be prepared to see gmake fail in parallel
+		mode. If you are interested in reliable parallel execution,
+		it is recommended to use the included "dmake" program with
+		a command line like:
+
+			dmake -j10 -f SMakefile
+
+		from the top level directory. Note that if you are on Linux,
+		you need a halfway recent kernel or the compile time will not
+		go down because of the low POSIX semaphore performance in
+		older Linux kernels.
+
+		The "dmake" program included in the schilytools tarball is the
+		current version of the "new" SunOS make program that has been
+		introduced in January 1986 by Sun Microsystems. It also
+		introduced new features like the "include" directive that
+		3 years later have been copied by gmake in a partially buggy
+		way. As gmake does not fix showstopper bugs, it cannot be
+		supported. Current showstoppers are: 1) gmake executes
+		"include" related rules in the inverse order, causing rules
+		to fail if they depend on files created by an "earlier" action
+		2) gmake caches an outdated state of the directory and aborts
+		with a wrong complain about allegedly missing files that in
+		fact exist already.
+
+
+-	Schily.Copyright: various Copyright dates have been refreshed as
+	the related software has been recently modified.
+
+-	Makefile system: RULES/rules.env The environment variables FIGNORE, 
+	LD_LIBRARY_PATH LD_LIBRARY_PATH_32 and LD_LIBRARY_PATH_64 are now
+	unexported from the environment.
+
+	In special FIGNORE is dangerous, as it is frequently used by bash
+	users for a completely different purpose, but it tells ksh93 to 
+	modify it's behavior with e.g. "echo *" and this may cause strange
+	things with our makefiles in case that /bin/sh is ksh92. This 
+	applies e.g. to OpenSolaris and Oracle Solaris 11.
+
+-	OpenCSW package meta data: next attempt to deal with the strange
+	rules. This finally resulted in a new set of OpenCSW packages
+	published on September 16 2020.
+
+-	udiff: The program now tries to mmap() the files to speed up
+	comparison. This typically speeds up udiff by 5-10%.
+
+-	udiff: files are now opened in binary mode to support binary diffs
+	on DOS like operating systems as well.
+
+-	udiff: the malloc strategy for struct line has changed and now
+	increases the amount in order to avoid too many realloc() calls.
+
+-	SCCS: diff: files are now opened in binary mode to support binary diffs
+	on DOS like operating systems as well.
+
+-	SCCS: The Copyright notices for several files have been updated.
+
+-	SCCS: Nul byte background: SCCS supports binary data since approx.
+	1986. This is a feature introduced by Sun Microsystems with SunOS-3.0.
+	At that time, this has been implemented by introducing intrinsic 
+	uu-encoding of the payload.
+
+	SCCSv6 history now supports un-uuencoded binary data in the payload.
+	This typically reduces the history file size in such a case by 
+	at least 30% and it permits to achieve better delta data by handling
+	the binary data with diff(1) directly.
+
+-	SCCS: The option -Xgpath=g-pat was missing from "sccs help Xopts".
+	It was now added.
+
+-	SCCS: all libraries: The file Targets now uses CFILES += ... instead of
+	CFILES= ... in order to permit to create a Makefile that includes all
+	of them in order to compile a single SCCS library.
+
+-	SCCS: libcomobj: added a new function putlline() to put a line
+	with the length as a parameter. This way, the line may contain nul
+	bytes.
+
+-	SCCS libcomobj: doget.c (the simple get(1) library implementation)
+	now supports nul bytes in the weave data.
+
+-	SCCS libcomobj: rdmod.c the readmod() function which is the low
+	level base for every gotten line from get(1) now correctly supports
+	lines that start with ^A. As long as we could output the data using
+	fputs(), things worked OK. The fact that the last release changed this
+	to fwrite() in preparation to support nul bytes, we need the correct
+	line length to support nul bytes in data. As a side effect, the last
+	version from get(1) appended a nul byte to every line that starts with
+	a ^A. We now reduce the line length of such lines by one to let
+	fwrite() write the right amount of data.
+
+-	SCCS: Unit Tests: The tests for files with problematic content:
+
+	-	nul bytes
+	-	^A at the beginning of lines
+	-	file does not end in a newline
+
+	have been enhanced by a comparison of the gotten content with
+	the orignal content. This discovered the bug above.
+
+-	SCCS libcomobj: idsubst.c the idsubst() function now early rejects
+	to expand keywords if an empty 'y' flag is set in the SCCS history
+	file, using "admin -fy ...". This is needed as idsubst() would
+	otherwise return a C-string of unknown length that cannot handle
+	nul bytes. Before, a line that contains a '%' caused idsubst() to
+	return an unmodified simple copy of the line, even with an empty 
+	'y' flag, but this old method would prevent nul bytes from being
+	passed correctly.
+
+-	SCCS: Unit Tests: New tests for binary files that contain nul bytes
+	have been added to the tests.
+
+-	SCCS: the unit test binary/auto.sh added a test with a binary file
+	that checks whether "admin -fy ..." works as expected.
+
+-	SCCS libcomobj: dometa.c In case that an unknown entry for SCCSv6
+	meta data is present in the SCCS history files, the two versions
+	starting from 2020-08-12 did destroy the SCCS history file while
+	modifying it. WARNING: Do not use these two SCCS versions from 
+	schilytools 2020-08-12 or 2020-09-04.
+
+	The new version restores the removed newline from such entries
+	before returning.
+
+-	SCCS libcomobj: namedflags.c In case that an unknown entry for SCCSv6
+	meta data is present in the SCCS history files, the two versions
+	starting from 2020-08-12 did destroy the SCCS history file wile
+	modifying it. WARNING: Do not use these two SCCS versions from 
+	schilytools 2020-08-12 or 2020-09-04.
+
+	The new version restores the removed newline from such entries
+	before returning.
+
+-	SCCS libcomobj: namedflags.c A new named flag entry is now "supported".
+	This is a dummy named flag entry in the form "^AF   ". It is supported
+	by not printing a warning message, when such an entry is observed.
+	This is needed for a new feature of admin(1) where admin(1) creates
+	such an entry for every new SCCSv6 history file in order to preserve
+	space in the file for a potential "^Af y " flag entry to switch off
+	keyword expansion for binary files that contain nul bytes and thus
+	cannot handle keyword expansion.
+
+-	SCCS libcomobj: flushto.c when copying SCCS history files, a dummy
+	entry in the form "^AF   " is now skipped in order to remove this
+	entry from the copy of the history file. Such entries are only needed
+	for the initial SCCS history file creation by admin(1). If admin(1)
+	dos not replace them by "^Af y ", they no longer make sense.
+
+-	SCCS: delta now supports to handle nul bytes in the diff(1) output.
+	Together with other changes, this permits a non-uuencoded payload.
+
+-	SCCS: delta now supports nul bytes in the weave data, while in the
+	"readmod" loop. This prepares delta(1) for a non-uuencoded payload
+	in SCCS history files.
+
+-	SCCS: delta now supports nul bytes in the new version of the input 
+	file if processing SCCSv6 history files.
+
+-	SCCS: the unit test binary/auto.sh now knows that nul bytes in the
+	files do not create a uu-encoded history file if it is using a 
+	SCCSv6 history file.
+
+-	SCCS: delta added a missing newline to the warning
+
+		"No newline at end of file (de18)"
+
+-	SCCS: get(1) now supports nul bytes in the weave data, while in the
+	"readmod" loop. This prepares get(1) for a non non-uuencoded payload
+	in SCCS history files.
+
+-	SCCS: delta now by default uses "fsdiff" instead of "bdiff".
+	This speeds up things with larger files since fsdiff does not slow
+	down quadratically with the file size.
+
+	"fsdiff" has been extensively tested, but since this is big change,
+	please report if you observe any problems from this change.
+
+-	SCCS: delta if called as "delta -d ..." now calls diff(1) with the
+	option -a. This is needed since we now support un-uuencoded binary
+	data in SCCS history files.
+
+-	SCCS: Unit Tests: The tests for binary files that contain nul bytes
+	are now called three times, one time for every diff option supported
+	by delta(1) -> "" "-b" "-d". This results in fsdiff(1), bdiff(1) and
+	diff(1) to be verified.
+
+-	SCCS: "sccs help delta" now mentions the new option -b for delta(1).
+
+-	SCCS: the sccs-delta man page now mentions the new option -b for delta(1).
+
+-	SCCS: val now correctly handles nul bytes when computing the checksum.
+
+-	SCCS: prs now correctly outputs nul bytes if they are in the referenced
+	data stream. This applies only to the history file body, but the 
+	changed function is used by other purposes as well.
+
+-	SCCS: admin now (when creating SCCSv6 history files) permits nul bytes
+	in new files.
+
+-	SCCS: admin now (when creating SCCSv6 history files) and a nul byte
+	is seen in the file, automatically disables keyword expansion as if
+	a "admin -fy ..." has been issued. This is done by first introducing
+	a dummy entry in the form "^AF   " and later overwriting this by
+	"^Af y " in case the file is identified as binary file.
+
+	In case of a text file, the dummy entry "^AF   " remains in the SCCS
+	history file until "admin -z ..." or a modifying other SCCS command
+	such as delta(1) processes the file.
+
+	This behavior is aligned with SCCS behavior since 1986 when binary
+	files have been automatically handled as uu-encoded files with 
+	keyword expansion disabled by the uu-decode algorithm. The new explicit
+	disabling of keyword expansion is needed since the new version treats
+	text files and binary files the same way.
+
+-	SCCS: The get(1) and admin(1) man pages now mention that keyword expansion
+	is by default disabled with binary data in SCCSv6 history files.
+
+-	SCCS: the Unit Test Script admin/admin-hz.sh has been adopted to support
+	the change in admin(1) from above. It now calls "admin -s ..." in order
+	to explicitly remove the dummy entry in the form "^AF   " from the
+	SCCS history file before running the other tests that include a test
+	for a specific history file layout.
+
+-	SCCS: admin no longer prints the "sccs help ad31" message if a file
+	without new line at it's end is initially put under SCCS as the
+	"sccs help ad31" message talks about the t-file and is not useful
+	for the g-file. A one line warning is sufficient in this case.
+
+-	SCCS: admin fixed a bug in a SCCSv6 enhancement. A file where the last
+	line did not end in a newline and at the same time started with ^A
+	was not handled correctly. Such data is extremely improbable in text
+	files but highly probable in binary data that is a result of a
+	compress process.
+
+-	SCCS: the unit test binary/auto.sh added a test with a binary file
+	for the above case.
+
+-	SCCS: the sccs subcommand "istext" no longer always defaults to the
+	SCCSv4 history format when checking files. It now rather defaults
+	to SCCSv6 in case that a "sccs create" call would create a SCCSv6
+	history file by default.
+
+-	SCCS: the sccs subcommand "istext" added a new option -D to print
+	the current default history format that is used when checking the
+	files.
+
+-	SCCS: delta now catches SIGINT and removes the global lock file in case
+	that no real work has yet been done. This helps to avoid the need for
+	a manual removal of the global lock file when delta is interrupted
+	while it is asking for a delta comment, which is before any file
+	is changed.
+
+-	SCCS: The changes since 2020-08-12 in total caused a speed up in
+	SCCS by 25%. This is the observed speedup when running the SCCS
+	Unit Test Suite.
+
+-	SCCS: a new version date is used for this version.
+
+-	SunPro Make: The Copyright notices for several files have been updated.
+
+-	compare: The man page now has an AUTHOR section and mentions that
+	the name is in use since at least 1985 (really since 1980). This
+	is important to verify that "imagemagic" is still a non-cooperative
+	project that highjacks command names.
+
+
+
+-	SCCS: The current idea for converting a historic SCCS project into
+	a project oriented SCCS history bundle is the following:
+
+	-	Create a user map file for "sccslog" by calling:
+
+		mkdir $HOME/.sccs
+		$EDITOR $HOME/.sccs/usermap
+
+		Enter the UNIX login names followed by a TAB, followed
+		by an E-mail notation. Use one line per user, e.g.
+
+			joerg	J. Schilling <joerg@mail.com>
+
+	-	Create a copy of the whole project to work on for this test.
+		Do not do this conversion on the original project until
+		sccs-6.0 is ready.
+
+	-	chdir to the project home directory of the just created copy.
+
+	-	Call "sccs init -i ." to make the project using an in-tree
+		project oriented repository.
+
+	-	Call:
+
+		find * -path '*SCCS/s.*' | /opt/schily/ccs/bin/sccscvt -NSCCS/s. -k -ooo -V6 -
+
+		for the CSRG BSD project use:
+
+		find * -path '*SCCS/s.*' | TZ=US/Pacific /opt/schily/ccs/bin/sccscvt -NSCCS/s. -k -ooo -V6 -
+
+		to convert all history files into SCCSv6 history files. The
+		TZ=US/Pacific is important for the UCB conversion since SCCSv6
+		uses timezones but SCCSv4 does not and we need to have the 
+		correct timezone entries in the SCCSv6 history files.
+
+		For the complete "schilytools" project with 4200 SCCS history
+		files in 55 Mbytes, this takes 12 seconds for the SCCS history
+		from 1984 .. 2020, but note that most of the edits from the
+		1980s are lost, so there are few entries from the time
+		before 1989.
+
+		An alternate example: the SCCS history from the BSD-4.4 project
+		from December 1979 up to June 1995 is in 12600 SCCS history
+		files that take up 125 MB.
+		The conversion time to the SCCSv6 history file format is
+		18 seconds.
+
+	-	Call:
+
+		find * -path '*SCCS/s.*' | /opt/schily/ccs/bin/sccslog -changeset -
+
+		to populate the changeset file from the existing deltas.
+
+		For the complete "schilytools" project with 19600 commits,
+		this takes 8 minutes. The resulting file .sccs/SCCS/s.changeset
+		has a size of approx. 7 MBytes.
+
+		An alternate example: the SCCS history from the BSD-4.4 project
+		from December 1979 up to June 1995 has approx. 47000 commits.
+		The conversion time is approx. 40 minutes.
+		The size of the resulting changeset file is approx. 14 MBytes.
+
+	-	convert the in-tree repository into an off-tree repository.
+		This final step is not yet needed and there is currently no
+		code to do that automatically.
+
+	-	If you like to check the resulting changeset file, there is
+		currently only one way to look at it, by calling:
+
+		sccs -O get -p -A -m .sccs/SCCS/s.changeset | more
+
+		This prints an annotated version of the changeset file.
+		The next task is to develop an enhancement to "sccs log"
+		that prints the changeset in a way similar to what "hg log -v"
+		prints.
+
+	-	NOTE: Normal filesystems on Linux are slow, it is advised to
+		make the conversions on tmpfs for performance reasons in case
+		you are using Linux.
+
+	Please however keep in mind that this is still experimental and there is
+	absolutely no grant that a changelog created with current experimental
+	software will work correctly with the final SCCS version. The procedure
+	is just an example to check how it may look like.
+
+	The final conversion method will be more automated... most likely
+	by a command similar to "sccs import ..."
+
+	IMPORTANT: This is not yet the time to finally convert a project into
+	the project mode, because the project would be stuck in the current 
+	state. What we need to continue work in that repository state in the
+	project mode is at least a working "sccs commit". Be prepared to remove
+	the changeset history file once "sccs commit" works and to re-create
+	the changeset file for that time.
+
+ 
+
+-	SCCS TODO:
+
+	-	Activate "fsdiff" as a "bdiff" replacement in delta(1)
+		to speed up delta(1) and to reduce the size of the SCCS
+		history files.
+
+	-	Implement something that outputs similar information from
+		the changeset file as printed with "hg log -v".
+
+		This would be the next key feature.
+
+	-	verify whether sccs.c uses -NSCCS in the back end programs
+		correctly, instead of converting g-file names from the command
+		line into s.file names in the frontend in order to forward 
+		s.file names to the backend programs. This is needed for an
+		off-tree repository.
+
+		The related unit tests are already passed.
+
+	-	Add code to to sccs(1) to send a list of files to admin(1) and
+		delta(1) with new or modified files in order to have all
+		important code for a "sccs commit" in a single program that
+		does not need to deal with ARG_MAX limitations.
+
+	-	Add code to admin(1), delta(1), sccs-log(1) and get(1) to 
+		maintain/understand the changeset file.
+
+		This is mainly writing out the sccschangeset(4) entries to an
+		intermediate store if a single file has been treated
+		successfully. For sccs-log(1), see below.
+
+	-	Finish the work to allow normal line based diffs in SCCS even
+		for binary files. This are files that include nul bytes and
+		this needs to completely avoid fputs() and this needs an 
+		initialized member p_line_length in struct packet even for 
+		all content that does not result from a previous getline() call.
+
+	-	sccs -R tell (and probably other subcommands?) does not yet
+		work in NewMode
+
+	-	Add code to libcomobj to understand the changeset file.
+		This is needed in order to e.g. know the file names and file
+		specific SIDs/state that corresponds to a project global SID.
+
+	-	Find/verify a complete transactional model that allows to repair
+		complex changes to the set of files for a project that have
+		been aborted in the middle. The current idea is to create the
+		file $PROJECTHOME/.sccs/changeset with the deltas to the
+		changeset during a complex update operation.
+
+	-	Find a decision on how to deal with the admin flags that are
+		currently implemented as global flags and thus do not depend on
+		the SID (version) if the history file.
+
+	-	Aborting a transaction via ^C currently requires a manual
+		removal of the global lock file. Find a way to avoid this in
+		case that a commit has been aborted while being prompted for
+		a commit message (which is before any real action happened).
+
+	-	Implement a fully automated method to convert a SCCSv4 based
+		history with unrelated history files into a new SCCSv6 based
+		project mode history with a populated changeset history file.
+
+		This will most likely be done as a variant of the to be defined
+		new command "sccs sccsimport" that imports a whole existing old
+		SCCS project.
+
+	-	Implement this "sccs sccsimport" based conversion in a way where
+		sccs(1) holds the global changeset lock for the whole time
+		of the conversion.
+
+
+
+
+-	Bourne Shell Missing features for POSIX compliance:
+
+	- Support for $'...' quoting (this is not needed for the current
+					version of POSIX but for the next POSIX
+					version that will be named SUSv8).
+					The development of SUSv8 will start in
+					late 2016.
+
+	We are now expecting the Bourne Shell to be fully POSIX compliant.
+
+-	Bourne Shell further TODO list:
+
+	-	Finish loadable builtin support.
+
+	-	POSIX does not allow us to implement ". -h", so we will
+		add a "source" builtin to be able to implement "source -h"
+
+-	The following builtins (that are available in bsh) are still missing in
+	the Bourne Shell:
+
+	err			echo with output going to stderr
+	glob			echo with '\0' instead of ' ' between args
+	env			a builtin version of /usr/bin/env
+
+	The following bsh intrinsics are still missing in the Bourne Shell:
+
+	-			the restricted bsh has restriction features that
+				are missing in the Bourne shell.
+
+	-	source -h	read file into history but do not execute
+
+	and probably more features not yet identified to be bsh unique.
+
+
+
+Author:
+
+Joerg Schilling
+D-13353 Berlin
+Germany
+
+Email: 	joerg@schily.net, joerg.schilling@fokus.fraunhofer.de
+
+Please mail bugs and suggestions to me.

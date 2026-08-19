@@ -1,0 +1,153 @@
+#!/bin/sh
+# @(#)lnfiles	1.36 21/08/20 Copyright 1999-2019 J. Schilling
+
+cp='ln -s'
+smake=smake
+lib=libschily
+incsrc=..
+if [ -r ${incsrc}/${smake}/make.c ]; then
+	:
+else
+	if [ -r ${incsrc}/build/make.c ]; then
+		smake=build
+	else
+		incsrc=../..
+		if [ -r ${incsrc}/build/make.c ]; then
+			smake=build
+		fi
+	fi
+fi
+if [ -r ${incsrc}/${lib}/error.c ]; then
+	:
+else
+	lib=lib
+fi
+
+if [ ! -d include/schily ]; then
+	mkdir include/schily
+fi
+
+$cp ${incsrc}/${smake}/archconf.c	archconf.c
+$cp ${incsrc}/${smake}/job.c		job.c
+$cp ${incsrc}/${smake}/job.h		job.h
+$cp ${incsrc}/${smake}/make.c		make.c
+$cp ${incsrc}/${smake}/make.h		make.h
+$cp ${incsrc}/${smake}/memory.c		memory.c
+$cp ${incsrc}/${smake}/parse.c		parse.c
+$cp ${incsrc}/${smake}/readfile.c	readfile.c
+$cp ${incsrc}/${smake}/rules.c		rules.c
+$cp ${incsrc}/${smake}/update.c		update.c
+$cp ${incsrc}/${smake}/version.h		version.h
+$cp ${incsrc}/../../include/schily/archdefs.h	include/schily/archdefs.h
+$cp ${incsrc}/../../include/schily/ccomdefs.h	include/schily/ccomdefs.h
+$cp ${incsrc}/../../include/schily/ctype.h	include/schily/ctype.h
+$cp ${incsrc}/../../include/schily/dbgmalloc.h		include/schily/dbgmalloc.h
+$cp ${incsrc}/../../include/schily/dirent.h		include/schily/dirent.h
+$cp ${incsrc}/../../include/schily/dlfcn.h		include/schily/dlfcn.h
+$cp ${incsrc}/../../include/schily/err_arch.h		include/schily/err_arch.h
+$cp ${incsrc}/../../include/schily/err_char.h		include/schily/err_char.h
+$cp ${incsrc}/../../include/schily/err_type.h		include/schily/err_type.h
+$cp ${incsrc}/../../include/schily/fcntl.h		include/schily/fcntl.h
+$cp ${incsrc}/../../include/schily/getargs.h	include/schily/getargs.h
+$cp ${incsrc}/../../include/schily/getcwd.h		include/schily/getcwd.h
+$cp ${incsrc}/../../include/schily/hostname.h		include/schily/hostname.h
+$cp ${incsrc}/../../include/schily/inttypes.h	include/schily/inttypes.h
+$cp ${incsrc}/../../include/schily/io.h		include/schily/io.h
+$cp ${incsrc}/../../include/schily/libport.h	include/schily/libport.h
+$cp ${incsrc}/../../include/schily/limits.h	include/schily/limits.h
+$cp ${incsrc}/../../include/schily/locale.h	include/schily/locale.h
+$cp ${incsrc}/../../include/schily/nlsdefs.h	include/schily/nlsdefs.h
+$cp ${incsrc}/../../include/schily/maxpath.h	include/schily/maxpath.h
+$cp ${incsrc}/../../include/schily/mconfig.h	include/schily/mconfig.h
+$cp ${incsrc}/../../include/schily/netdb.h	include/schily/netdb.h
+$cp ${incsrc}/../../include/schily/xconfig.h	include/schily/xconfig.h
+$cp ${incsrc}/../../include/schily/xmconfig.h	include/schily/xmconfig.h
+$cp ${incsrc}/../../include/schily/prototyp.h	include/schily/prototyp.h
+$cp ${incsrc}/../../include/schily/sigblk.h		include/schily/sigblk.h
+$cp ${incsrc}/../../include/schily/signal.h		include/schily/signal.h
+$cp ${incsrc}/../../include/schily/standard.h	include/schily/standard.h
+$cp ${incsrc}/../../include/schily/stat.h		include/schily/stat.h
+$cp ${incsrc}/../../include/schily/stdint.h		include/schily/stdint.h
+$cp ${incsrc}/../../include/schily/stdio.h		include/schily/stdio.h
+$cp ${incsrc}/../../include/schily/stdlib.h		include/schily/stdlib.h
+$cp ${incsrc}/../../include/schily/stkframe.h		include/schily/stkframe.h
+$cp ${incsrc}/../../include/schily/string.h		include/schily/string.h
+$cp ${incsrc}/../../include/schily/sunos4_proto.h	include/schily/sunos4_proto.h
+$cp ${incsrc}/../../include/schily/systeminfo.h		include/schily/systeminfo.h
+$cp ${incsrc}/../../include/schily/time.h		include/schily/time.h
+$cp ${incsrc}/../../include/schily/times.h		include/schily/times.h
+$cp ${incsrc}/../../include/schily/unistd.h		include/schily/unistd.h
+$cp ${incsrc}/../../include/schily/utime.h		include/schily/utime.h
+$cp ${incsrc}/../../include/schily/utsname.h		include/schily/utsname.h
+$cp ${incsrc}/../../include/schily/utypes.h		include/schily/utypes.h
+$cp ${incsrc}/../../include/schily/type_val.h		include/schily/type_val.h
+$cp ${incsrc}/../../include/schily/types.h		include/schily/types.h
+$cp ${incsrc}/../../include/schily/param.h		include/schily/param.h
+$cp ${incsrc}/../../include/schily/varargs.h	include/schily/varargs.h
+$cp ${incsrc}/../../include/schily/vfork.h		include/schily/vfork.h
+$cp ${incsrc}/../../include/schily/wait.h		include/schily/wait.h
+$cp ${incsrc}/../../include/schily/windows.h		include/schily/windows.h
+$cp ${incsrc}/../../include/schily/schily.h		include/schily/schily.h
+$cp ${incsrc}/../../include/schily/errno.h		include/schily/errno.h
+$cp ${incsrc}/../../include/schily/align.h		include/schily/align.h
+$cp ${incsrc}/../../include/schily/avoffset.h	include/schily/avoffset.h
+$cp ${incsrc}/autoconf/config.guess	config.guess
+$cp ${incsrc}/autoconf/config.sub	config.sub
+$cp ${incsrc}/autoconf/configure	configure
+if [ -r ${incsrc}/autoconf/rules.cnf.in ]; then
+	$cp ${incsrc}/autoconf/rules.cnf.in	rules.cnf.in
+fi
+if [ -r ${incsrc}/autoconf/xconfig.h.in ]; then
+	$cp ${incsrc}/autoconf/xconfig.h.in	xconfig.h.in
+fi
+if [ -r ${incsrc}/autoconf/rules.cnf_in ]; then
+	$cp ${incsrc}/autoconf/rules.cnf_in	rules.cnf_in
+fi
+if [ -r ${incsrc}/autoconf/xconfig.h_in ]; then
+	$cp ${incsrc}/autoconf/xconfig.h_in	xconfig.h_in
+fi
+$cp ${incsrc}/conf/install-sh	install-sh
+$cp ${incsrc}/${lib}/stdio/schilyio.h	schilyio.h
+$cp ${incsrc}/${lib}/astoi.c		astoi.c
+$cp ${incsrc}/${lib}/astoll.c		astoll.c
+$cp ${incsrc}/${lib}/comerr.c		comerr.c
+$cp ${incsrc}/${lib}/eaccess.c		eaccess.c
+$cp ${incsrc}/${lib}/error.c		error.c
+$cp ${incsrc}/${lib}/format.c		format.c
+$cp ${incsrc}/${lib}/format.h		format.h
+$cp ${incsrc}/${lib}/getexecpath.c	getexecpath.c
+$cp ${incsrc}/${lib}/getnstimeofday.c	getnstimeofday.c
+#$cp ${incsrc}/${lib}/printf.c		printf.c
+#$cp ${incsrc}/${lib}/sprintf.c		sprintf.c
+#$cp ${incsrc}/${lib}/snprintf.c	snprintf.c
+$cp ${incsrc}/${lib}/saveargs.c	saveargs.c
+$cp ${incsrc}/${lib}/seterrno.c	seterrno.c
+$cp ${incsrc}/${lib}/strcatl.c		strcatl.c
+$cp ${incsrc}/${lib}/strlcpy.c		strlcpy.c
+$cp ${incsrc}/${lib}/strncpy.c		strncpy.c
+$cp ${incsrc}/${lib}/strnlen.c		strnlen.c
+$cp ${incsrc}/${lib}/streql.c		streql.c
+$cp ${incsrc}/${lib}/fillbytes.c	fillbytes.c
+$cp ${incsrc}/${lib}/getargs.c		getargs.c
+$cp ${incsrc}/${lib}/geterrno.c	geterrno.c
+$cp ${incsrc}/${lib}/movebytes.c	movebytes.c
+$cp ${incsrc}/${lib}/ovstrcpy.c		ovstrcpy.c
+$cp ${incsrc}/${lib}/raisecond.c	raisecond.c
+$cp ${incsrc}/${lib}/rename.c		rename.c
+$cp ${incsrc}/${lib}/searchinpath.c	searchinpath.c
+$cp ${incsrc}/${lib}/jsprintf.c	jsprintf.c
+$cp ${incsrc}/${lib}/jssnprintf.c	jssnprintf.c
+$cp ${incsrc}/${lib}/uname.c		uname.c
+$cp ${incsrc}/${lib}/unsetenv.c		unsetenv.c
+$cp ${incsrc}/${lib}/stdio/cvmod.c	cvmod.c
+$cp ${incsrc}/${lib}/stdio/fcons.c	fcons.c
+$cp ${incsrc}/${lib}/stdio/file_raise.c	file_raise.c
+$cp ${incsrc}/${lib}/stdio/fileopen.c	fileopen.c
+$cp ${incsrc}/${lib}/stdio/dat.c	dat.c
+$cp ${incsrc}/${lib}/stdio/fileread.c	fileread.c
+$cp ${incsrc}/${lib}/stdio/fileseek.c	fileseek.c
+$cp ${incsrc}/${lib}/stdio/filewrite.c	filewrite.c
+$cp ${incsrc}/${lib}/stdio/flag.c	flag.c
+$cp ${incsrc}/${lib}/stdio/flush.c	flush.c
+$cp ${incsrc}/${lib}/stdio/niread.c	niread.c
+$cp ${incsrc}/${lib}/stdio/niwrite.c	niwrite.c

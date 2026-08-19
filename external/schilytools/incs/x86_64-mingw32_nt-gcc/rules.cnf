@@ -1,0 +1,55 @@
+# @(#)rules.cnf.in	1.36 18/08/15 Copyright 1998-2018 J. Schilling
+
+#
+# WARNING: no space/comment past the following three macros!
+#	   The comment is thus in the line before
+#
+
+# Executable extension "" on UNIX, ".exe" on DOS
+EXEEXT= .exe
+
+# If non-empty, prog.exec needs to be called so
+XEXEEXT= 
+
+# Object extension, .o on UNIX, .obj on DOS
+OBJEXT= o
+
+YACC= noyacc			# Yacc parser is present
+BISON= nobison			# Bison parser if present
+TSORT_PROG= cat		# Path to tsort program if present
+LORDER_PROG= echo		# Path to lorder program if present
+CPP= gcc -E			# Command to run C preprocessor
+CPPX= /mingw32/bin/cpp			# Command to run cpp with any type of file
+CPPX_IN= 		# Used with CPPX when "gcc -E - <" is needed
+
+LARGEFILE_CC_OPT= 	# Largefile option for IRIX
+SUN_CC64_OPT= 	# Used on e.g. Solaris and Linux
+HP_CC_ANSI_OPT= 	# Used on HP-UX
+HP_CC_OPT_OPT= 	# Used on HP-UX
+HP_CC_GPROF_OPT= 	# Used on HP-UX
+
+MAY_LINUX_SRC_INCLUDE= 	# /usr/src/include useful
+
+SCSILIB= 		# IRIX libcam (outdated)
+LIB_SCSI= 		# New SCSI lib variable
+LIB_RESOLV= 	# libresolv if code is not in libc
+LIB_CRYPT= 		# Library for crypt() if not in libc
+LIB_INTL= -lintl		# Library for gettext() if not in libc
+LIB_ICONV= -liconv		# Library for iconv() if not in libc
+LIB_EXPAT= 		# Expat library if present
+LIB_PCSC= 		# PCSC library if present
+LIB_CRYPTO= 	# Crypto library for OpenSSL & friends
+LIB_SSL= 		# SSL library for OpenSSL & friends
+LIB_NSL= 		# For gethostbyname() / socket() ... users
+LIB_ACL= 		# Full (test/set) ACL users like star
+LIB_ACL_TEST= 	# Test only ACL users like libfind
+LIB_ATTR= 		# Linux xattr library
+LIB_SECDB= 		# Solaris security access, e.g. getexecattr()
+LIB_GEN= 		# SVr4 library that contains gmatch()
+LIB_ELF= 		# Standard ELF library if present
+LIB_PTHREAD= 	# POSIX thread library if not in libc
+LIB_RT= 		# Real time lib for e.g. clock_gettime()
+LIB_DL= 		# Dynamic linker library
+LIB_DIR= 		# Lib for opendir() if not in libc
+LIB_CAP= 		# Linux capability lib
+LIB_SELINUX= 	# SELinux lib

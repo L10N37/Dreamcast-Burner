@@ -1,0 +1,43 @@
+hV6,sum=22809
+s 00004/00002/00010
+d D 1.2 2014/08/26 14:43:59+0200 joerg 2 1
+S s 58229
+c Hinweis auf das original-CSSC README
+e
+s 00012/00000/00000
+d D 1.1 2010/05/11 11:30:00+0200 joerg 1 0
+S s 55150
+c date and time created 10/05/11 11:30:00 by joerg
+e
+u
+U
+f e 0
+f y 
+G r 0e46e8eb31958
+G p sccs/tests/cssctests/README
+t
+T
+I 1
+D 2
+This directory contains regression tests for the CSSC package (unit
+tests are in ../unit-tests).
+E 2
+I 2
+The text below is the original README from the imported CSSC tests:
+E 2
+
+I 2
+
+This directory contains regression tests for the CSSC package.
+
+E 2
+The environment variable "dir" selects where the programs to be tested
+are found, so if your machine has "genuine" SCCS in (say) /usr/sccs,
+you can say export dir=/usr/sccs and run these tests on the genuine
+article.  This serves to test the test suite itself.
+
+Most of these tests contain no checks of the contents of stderr.   
+Output to stdout is checked, as are return values.   However, CSSC
+produces more warning messages than genuine SCCS and also these
+messages are in a different (more helpful?) format.
+E 1

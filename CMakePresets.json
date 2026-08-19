@@ -18,7 +18,7 @@
       "displayName": "Windows x64 Debug",
       "inherits": "vs2022-x64",
       "cacheVariables": {
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/DreamcastBurner"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/RetroBurner"
       }
     },
     {
@@ -26,7 +26,7 @@
       "displayName": "Windows x64 Release",
       "inherits": "vs2022-x64",
       "cacheVariables": {
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/DreamcastBurner"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/dist/RetroBurner"
       }
     }
   ],

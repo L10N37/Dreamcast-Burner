@@ -1,0 +1,147 @@
+New features with AN-2016-02-10:
+
+This is the first localization step for the schily source consolidation. Many
+programs now (hopefully) call gettext() for all strings that need localization.
+
+-	The next step will include dgettext() calls for the libraries and the
+	missing programs
+
+-	The following step will include the extracted strings
+
+-	The last step will include German translations and install support
+	for the resulting binary message object files.
+
+----------> Please test and report compilation problems! <---------
+
+***** NOTE: As mentioned since 2004, frontends to the tools should *****
+*****		call all programs in the "C" locale		   *****
+*****		by e.g. calling: LC_ALL=C cdrecord ....		   *****
+*****		unless these frontends support localized strings   *****
+*****		used by the cdrtools with NLS support.		   *****
+
+		*** WARNING        ***
+		*** Need new smake ***
+
+	*** Due to the fact that schily-tools 2014-04-03 introduced to use new macro
+	*** expansions and a related bug fix in smake, you need a new smake
+	*** to compile this source. To ensure this, call:
+
+	cd ./psmake
+	./MAKE-all
+	cd ..
+	psmake/smake
+	psmake/smake install
+
+
+	WARNING: the new version of the isoinfo program makes use of the 
+		*at() series of functions that have been introduced by Sun
+		in August 2001 and added to POSIX.1-2008. For older platforms,
+		libschily now includes emulations for these functions but
+		these emulations have not yet been tested thoroughly.
+		Please report problems!
+
+	The new smake version mentioned above is smake-1.2.4
+
+-	smake: make.c removed a stray '}' in inactive code.
+	Thanks to heiko Eißfeldt for reporting.
+
+-	libschily/cvt.c: Removed a superfluous comparison.
+	Thanks to heiko Eißfeldt for reporting.
+
+-	mkisofs/mac_label.c: fixed a file descriptor leak
+	Thanks to heiko Eißfeldt for reporting.
+
+-	star/acltext.c: fixed a memory leak in case that malloc() failed
+	in acltotext().
+	Thanks to heiko Eißfeldt for reporting.
+
+-	Bourne Shell: The following shell variables now may be unset:
+
+	-	PATH
+	-	IFS
+	-	PS1
+	-	PS2
+	-	MAILCHECK
+
+	This avoids problems with a IFS POSIX conformance test from
+	Sven Mascheck and POSIX mentions an unset IFS parameter.
+
+-	Bourne Shell: The shell variable PPID is no longer readonly.
+	This is because otherwise the set command with saved variables
+	would fail to restore the values.
+
+-	Bourne Shell: added "apropriate" quoting for the output from the
+	"set" command with no arguments to support POSIX requirements.
+
+-	Bourne Shell: Permit functions with the same name as shell variables.
+
+-	Bourne Shell: Tilde expansion is now fully supported even after 
+	an unquoted ':' in variable assignment.
+
+
+
+-	Bourne Shell Missing features for POSIX compliance:
+
+	- Arithmetic Substitution with $((expression))
+
+	- Do not list functions when calling "set" with no arguments.
+	  Note that this POSIX requirement is seen as a POSIX bug as there
+	  is no POSIX command to list function definitions.
+	  NOTE that this will not be implemented before POSIX bug
+	  http://austingroupbugs.net/view.php?id=1025 was fixed.
+
+
+	- Support for $'...' quoting (this is not needed for the current
+					version of POSIX but for the next POSIX
+					version that will be SUSv8)
+
+	We are getting very close to full POSIX support.
+
+
+-	Bourne Shell further TODO list:
+
+	-	Try to make
+
+		lastline=
+		while read line
+		do
+			lastline=$line
+		done < /etc/passwd
+		echo "lastline=$lastline"
+
+		print the last line of /etc/passwd without the exec "trick"
+		that is documented in the man page.
+	
+	-	Finish loadable builtin support.
+
+	-	POSIX does not allow us to implement ". -h", so we will
+		add a "source" builtin to be able to implement "source -h"
+
+-	The following builtins (that are available in bsh) are still missing in
+	the Bourne Shell:
+
+	err			echo with output going to stderr
+	glob			echo with '\0' instead of ' ' between args
+	env			a builtin version of /usr/bin/env
+
+	The following bsh intrinsics are still missing in the Bourne Shell:
+
+	-			the restricted bsh has restriction features that
+				are missing in the Bourne shell.
+
+	-	source -h	read file into history but do not excute
+
+	and probably more features not yet identified to be bsh unique.
+
+
+
+Author:
+
+Joerg Schilling
+D-13353 Berlin
+Germany
+
+Email: 	joerg@schily.net, js@cs.tu-berlin.de
+	joerg.schilling@fokus.fraunhofer.de
+
+Please mail bugs and suggestions to me.

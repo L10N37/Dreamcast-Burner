@@ -1,4 +1,5 @@
 #include "burn_engine.h"
+#include "burnermax.h"
 #include "embedded_tools.h"
 #include "resource.h"
 
@@ -65,11 +66,42 @@ struct UniqueHandle final {
 
 struct TemporaryDirectory final {
     fs::path path;
+
+    TemporaryDirectory() = default;
+    explicit TemporaryDirectory(fs::path value)
+        : path(std::move(value)) {}
+
     ~TemporaryDirectory() {
         if (!path.empty()) {
             std::error_code ignored;
             fs::remove_all(path, ignored);
         }
+    }
+
+    TemporaryDirectory(const TemporaryDirectory&) = delete;
+    TemporaryDirectory& operator=(const TemporaryDirectory&) = delete;
+
+    TemporaryDirectory(TemporaryDirectory&& other) noexcept
+        : path(std::move(other.path)) {
+        other.path.clear();
+    }
+
+    TemporaryDirectory& operator=(TemporaryDirectory&& other) noexcept {
+        if (this != &other) {
+            if (!path.empty()) {
+                std::error_code ignored;
+                fs::remove_all(path, ignored);
+            }
+            path = std::move(other.path);
+            other.path.clear();
+        }
+        return *this;
+    }
+
+    [[nodiscard]] fs::path Release() noexcept {
+        fs::path result = std::move(path);
+        path.clear();
+        return result;
     }
 };
 
@@ -159,6 +191,42 @@ struct ExtractedLayout final {
     return result;
 }
 
+[[nodiscard]] bool QueryFileIdentity(
+    const std::wstring& path,
+    std::uint64_t& sizeBytes,
+    std::uint64_t& writeTime) {
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!GetFileAttributesExW(
+            path.c_str(),
+            GetFileExInfoStandard,
+            &data)) {
+        return false;
+    }
+
+    ULARGE_INTEGER size{};
+    size.HighPart = data.nFileSizeHigh;
+    size.LowPart = data.nFileSizeLow;
+
+    ULARGE_INTEGER time{};
+    time.HighPart = data.ftLastWriteTime.dwHighDateTime;
+    time.LowPart = data.ftLastWriteTime.dwLowDateTime;
+
+    sizeBytes = size.QuadPart;
+    writeTime = time.QuadPart;
+    return sizeBytes > 0;
+}
+
+[[nodiscard]] bool SameWindowsPath(
+    const std::wstring& left,
+    const std::wstring& right) {
+    return CompareStringOrdinal(
+               left.c_str(),
+               static_cast<int>(left.size()),
+               right.c_str(),
+               static_cast<int>(right.size()),
+               TRUE) == CSTR_EQUAL;
+}
+
 [[nodiscard]] fs::path ExecutableDirectory() {
     std::wstring buffer(32768, L'\0');
     const DWORD length = GetModuleFileNameW(
@@ -183,8 +251,31 @@ struct ExtractedLayout final {
     const ULONGLONG tick = GetTickCount64();
     for (unsigned attempt = 0; attempt < 100; ++attempt) {
         fs::path candidate = root /
-            (L"DreamcastBurner-" + std::to_wstring(processId) + L"-" +
+            (L"RetroBurner-" + std::to_wstring(processId) + L"-" +
              std::to_wstring(tick) + L"-" + std::to_wstring(attempt));
+        std::error_code error;
+        if (fs::create_directory(candidate, error)) {
+            return TemporaryDirectory{std::move(candidate)};
+        }
+    }
+    return {};
+}
+
+[[nodiscard]] TemporaryDirectory MakeTemporaryDirectoryNear(
+    const fs::path& parent,
+    const std::wstring_view prefix) {
+    if (parent.empty()) {
+        return {};
+    }
+
+    const DWORD processId = GetCurrentProcessId();
+    const ULONGLONG tick = GetTickCount64();
+    for (unsigned attempt = 0; attempt < 100; ++attempt) {
+        fs::path candidate = parent /
+            (std::wstring(prefix) + L"-" +
+             std::to_wstring(processId) + L"-" +
+             std::to_wstring(tick) + L"-" +
+             std::to_wstring(attempt));
         std::error_code error;
         if (fs::create_directory(candidate, error)) {
             return TemporaryDirectory{std::move(candidate)};
@@ -306,6 +397,60 @@ struct ProcessResult final {
     return {true, exitCode, {}};
 }
 
+struct CopyProgressContext final {
+    BurnEngine* engine = nullptr;
+};
+
+DWORD CALLBACK CopyProgressRoutine(
+    LARGE_INTEGER totalFileSize,
+    LARGE_INTEGER totalBytesTransferred,
+    LARGE_INTEGER,
+    LARGE_INTEGER,
+    DWORD,
+    DWORD,
+    HANDLE,
+    HANDLE,
+    LPVOID context) {
+    auto* progressContext =
+        static_cast<CopyProgressContext*>(context);
+    if (progressContext == nullptr ||
+        progressContext->engine == nullptr ||
+        totalFileSize.QuadPart <= 0) {
+        return PROGRESS_CONTINUE;
+    }
+
+    const double fraction =
+        static_cast<double>(totalBytesTransferred.QuadPart) /
+        static_cast<double>(totalFileSize.QuadPart);
+
+    progressContext->engine->SetPreparationProgress(
+        static_cast<float>(std::clamp(fraction, 0.0, 1.0)),
+        "Preparing XGD3 working copy...");
+    return PROGRESS_CONTINUE;
+}
+
+[[nodiscard]] bool TryParsePercent(
+    const std::string_view line,
+    const std::regex& pattern,
+    int& percent) {
+    std::match_results<std::string_view::const_iterator> match;
+    if (!std::regex_search(
+            line.begin(),
+            line.end(),
+            match,
+            pattern)) {
+        return false;
+    }
+
+    try {
+        percent = std::stoi(match[1].str());
+        percent = std::clamp(percent, 0, 100);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 [[nodiscard]] std::string Lowercase(std::string value) {
     std::transform(
         value.begin(), value.end(), value.begin(),
@@ -313,6 +458,14 @@ struct ProcessResult final {
             return static_cast<char>(std::tolower(character));
         });
     return value;
+}
+
+[[nodiscard]] bool ContainsCaseInsensitive(
+    const std::string& haystack,
+    const std::string_view needle) {
+    const std::string loweredHaystack = Lowercase(haystack);
+    const std::string loweredNeedle = Lowercase(std::string(needle));
+    return loweredHaystack.find(loweredNeedle) != std::string::npos;
 }
 
 [[nodiscard]] std::uintmax_t SumFileSizes(const std::vector<fs::path>& files) {
@@ -399,6 +552,104 @@ struct ProcessResult final {
 [[nodiscard]] bool TargetUsesCue(const BurnTarget target) {
     return target == BurnTarget::PlayStation ||
            target == BurnTarget::Saturn;
+}
+
+
+[[nodiscard]] std::wstring JoinRetroBeamDriverOptions(
+    const BurnRequest& request,
+    const std::uint64_t layerBreak = 0) {
+    std::vector<std::wstring> options;
+    options.emplace_back(request.advanced.burnFree ? L"burnfree" : L"noburnfree");
+
+    const bool dvdTarget =
+        request.target == BurnTarget::PlayStation2Dvd ||
+        request.target == BurnTarget::Xbox360;
+    if (dvdTarget) {
+        switch (request.advanced.opcPolicy) {
+        case RetroBeamOpcPolicy::Force:
+            options.emplace_back(L"opc=force");
+            break;
+        case RetroBeamOpcPolicy::Skip:
+            options.emplace_back(L"opc=skip");
+            break;
+        case RetroBeamOpcPolicy::Automatic:
+        default:
+            options.emplace_back(L"opc=auto");
+            break;
+        }
+    }
+
+    if (request.advanced.forceSpeed) {
+        options.emplace_back(L"forcespeed");
+    }
+
+    if (request.advanced.useStreamingPolicy) {
+        options.emplace_back(
+            request.advanced.streamRotation == RetroBeamStreamRotation::Cav
+                ? L"streamwrc=cav"
+                : L"streamwrc=default");
+        options.emplace_back(
+            request.advanced.streamExact
+                ? L"streamexact"
+                : L"nostreamexact");
+    }
+
+    if (layerBreak != 0) {
+        options.emplace_back(
+            L"layerbreak=" + std::to_wstring(layerBreak));
+    }
+
+    std::wstring joined = L"driveropts=";
+    for (std::size_t i = 0; i < options.size(); ++i) {
+        if (i != 0) {
+            joined.push_back(L',');
+        }
+        joined += options[i];
+    }
+    return joined;
+}
+
+[[nodiscard]] const char* OpcPolicyName(const RetroBeamOpcPolicy policy) {
+    switch (policy) {
+    case RetroBeamOpcPolicy::Force: return "force";
+    case RetroBeamOpcPolicy::Skip: return "skip";
+    case RetroBeamOpcPolicy::Automatic:
+    default: return "auto";
+    }
+}
+
+[[nodiscard]] std::string RetroBeamAdvancedPolicyText(
+    const BurnRequest& request) {
+    std::string text =
+        "RetroBeam advanced policy: BURN-Free=" +
+        std::string(request.advanced.burnFree ? "enabled" : "disabled") +
+        ", force-speed=" +
+        std::string(request.advanced.forceSpeed ? "enabled" : "disabled");
+
+    if (request.target == BurnTarget::PlayStation2Dvd ||
+        request.target == BurnTarget::Xbox360) {
+        text += ", OPC=";
+        text += OpcPolicyName(request.advanced.opcPolicy);
+    }
+
+    if (request.target == BurnTarget::PlayStation2Dvd ||
+        request.target == BurnTarget::Xbox360) {
+        if (request.advanced.useStreamingPolicy) {
+            text += ", SET STREAMING=";
+            text += request.advanced.streamRotation == RetroBeamStreamRotation::Cav
+                ? "CAV"
+                : "firmware/default rotation";
+            text += request.advanced.streamExact ? " exact" : " closest-supported";
+            text += request.advanced.restoreStreamingDefaults
+                ? " (restore defaults after burn)"
+                : " (leave runtime streaming state)";
+        } else {
+            text += ", SET STREAMING=automatic";
+        }
+    }
+
+    text += "\r\n";
+    return text;
 }
 
 [[nodiscard]] bool ReadCueInformation(
@@ -565,8 +816,8 @@ struct ProcessResult final {
 
         cueTrackCount = 1;
         layout = size > kDvdRSingleLayerBytes
-            ? "PlayStation 2 DVD ISO - dual-layer DVD (growisofs)"
-            : "PlayStation 2 DVD ISO - single-layer DVD (growisofs)";
+            ? "PlayStation 2 DVD ISO - dual-layer DVD (DVD9)"
+            : "PlayStation 2 DVD ISO - single-layer DVD (DVD5)";
         return true;
     }
 
@@ -676,6 +927,124 @@ void PlayBurnCompleteSound() {
 
 } // namespace
 
+BurnEngine::~BurnEngine() {
+    if (worker_.joinable()) {
+        worker_.request_stop();
+        worker_.join();
+    }
+    ClearPreparedXgd3();
+}
+
+void BurnEngine::ClearPreparedXgd3() {
+    std::wstring directory;
+
+    {
+        std::lock_guard lock(mutex_);
+        if (!preparedXgd3_.valid &&
+            preparedXgd3_.workingDirectory.empty()) {
+            return;
+        }
+
+        directory = std::move(preparedXgd3_.workingDirectory);
+        preparedXgd3_ = PreparedXgd3Cache{};
+    }
+
+    if (!directory.empty()) {
+        std::error_code ignored;
+        fs::remove_all(fs::path(directory), ignored);
+    }
+}
+
+bool BurnEngine::TryReusePreparedXgd3(
+    const std::wstring& sourcePath,
+    std::wstring& workingImagePath) {
+    std::uint64_t currentBytes = 0;
+    std::uint64_t currentWriteTime = 0;
+    if (!QueryFileIdentity(
+            sourcePath,
+            currentBytes,
+            currentWriteTime)) {
+        ClearPreparedXgd3();
+        return false;
+    }
+
+    std::wstring staleDirectory;
+    {
+        std::lock_guard lock(mutex_);
+
+        const bool matches =
+            preparedXgd3_.valid &&
+            SameWindowsPath(
+                preparedXgd3_.sourcePath,
+                sourcePath) &&
+            preparedXgd3_.sourceBytes == currentBytes &&
+            preparedXgd3_.sourceWriteTime == currentWriteTime &&
+            !preparedXgd3_.workingImagePath.empty() &&
+            fs::is_regular_file(
+                fs::path(preparedXgd3_.workingImagePath));
+
+        if (matches) {
+            workingImagePath =
+                preparedXgd3_.workingImagePath;
+            return true;
+        }
+
+        staleDirectory =
+            std::move(preparedXgd3_.workingDirectory);
+        preparedXgd3_ = PreparedXgd3Cache{};
+    }
+
+    if (!staleDirectory.empty()) {
+        std::error_code ignored;
+        fs::remove_all(
+            fs::path(staleDirectory),
+            ignored);
+    }
+
+    return false;
+}
+
+void BurnEngine::StorePreparedXgd3(
+    const std::wstring& sourcePath,
+    const std::wstring& workingDirectory,
+    const std::wstring& workingImagePath) {
+    std::uint64_t sourceBytes = 0;
+    std::uint64_t sourceWriteTime = 0;
+    if (!QueryFileIdentity(
+            sourcePath,
+            sourceBytes,
+            sourceWriteTime)) {
+        return;
+    }
+
+    std::wstring staleDirectory;
+    {
+        std::lock_guard lock(mutex_);
+        staleDirectory =
+            std::move(preparedXgd3_.workingDirectory);
+
+        preparedXgd3_.valid = true;
+        preparedXgd3_.sourcePath = sourcePath;
+        preparedXgd3_.workingDirectory =
+            workingDirectory;
+        preparedXgd3_.workingImagePath =
+            workingImagePath;
+        preparedXgd3_.sourceBytes = sourceBytes;
+        preparedXgd3_.sourceWriteTime =
+            sourceWriteTime;
+    }
+
+    if (!staleDirectory.empty() &&
+        !SameWindowsPath(
+            staleDirectory,
+            workingDirectory)) {
+        std::error_code ignored;
+        fs::remove_all(
+            fs::path(staleDirectory),
+            ignored);
+    }
+}
+
 bool BurnEngine::Start(BurnRequest request) {
     {
         std::lock_guard lock(mutex_);
@@ -683,14 +1052,18 @@ bool BurnEngine::Start(BurnRequest request) {
             return false;
         }
         state_ = BurnSnapshot{};
+        // RB_LOG_CR_RESET
+        logPendingCarriageReturn_ = false;
         state_.busy = true;
         state_.stage = BurnStage::Preparing;
         state_.status =
-            request.checkOnly
-                ? "Checking disc image..."
-                : (request.simulate
-                    ? "Preparing simulated write..."
-                    : "Verifying burner and blank media...");
+            request.burnerMaxOnly
+                ? "Testing / enabling BurnerMAX..."
+                : (request.checkOnly
+                    ? "Checking disc image..."
+                    : (request.simulate
+                        ? "Preparing simulated write..."
+                        : "Verifying burner and blank media..."));
     }
     worker_ = std::jthread([this, request = std::move(request)]() mutable {
         Run(std::move(request));
@@ -698,15 +1071,69 @@ bool BurnEngine::Start(BurnRequest request) {
     return true;
 }
 
+// RB_DEDICATED_BURNERMAX_TEST_V84J
+bool BurnEngine::StartBurnerMaxTest(
+    std::wstring opticalDriveRoot) {
+    {
+        std::lock_guard lock(mutex_);
+        if (state_.busy) {
+            return false;
+        }
+
+        state_ = BurnSnapshot{};
+        logPendingCarriageReturn_ = false;
+        state_.busy = true;
+        state_.stage = BurnStage::Preparing;
+        state_.status = "Testing / enabling BurnerMAX...";
+    }
+
+    worker_ = std::jthread(
+        [this, opticalDriveRoot = std::move(opticalDriveRoot)]() mutable {
+            const EmbeddedToolPaths& tools = GetEmbeddedToolPaths();
+
+            if (!tools.Ready()) {
+                SetFailure(
+                    "The embedded recording backend could not be prepared: " +
+                    tools.error);
+                return;
+            }
+
+            BurnRequest request;
+            request.target = BurnTarget::Xbox360;
+            request.xbox360DiscType = Xbox360DiscType::Xgd3;
+            request.opticalDriveRoot =
+                std::move(opticalDriveRoot);
+            request.burnerMaxOnly = true;
+
+            AppendLog(
+                "BurnerMAX standalone test\r\n"
+                "Image validation: BYPASSED (not required)\r\n"
+                "Disc sector writes: DISABLED\r\n");
+
+            RunBurnerMaxOnly(
+                std::move(request),
+                tools.dvdMediaInfo.wstring());
+        });
+
+    return true;
+}
 BurnSnapshot BurnEngine::Snapshot() const {
     std::lock_guard lock(mutex_);
-    return state_;
+    BurnSnapshot snapshot = state_;
+    snapshot.xgd3Prepared = preparedXgd3_.valid;
+    snapshot.preparedXgd3SourcePath =
+        preparedXgd3_.sourcePath;
+    snapshot.preparedXgd3WorkingPath =
+        preparedXgd3_.workingImagePath;
+    return snapshot;
 }
 
 void BurnEngine::Reset() {
     std::lock_guard lock(mutex_);
     if (!state_.busy) {
         state_ = BurnSnapshot{};
+        // RB_LOG_CR_RESET
+        logPendingCarriageReturn_ = false;
     }
 }
 
@@ -716,8 +1143,103 @@ void BurnEngine::AppendLog(const std::string& text) {
         return;
     }
 
-    state_.log += text;
+    // RB_TERMINAL_LOG_CR_HANDLING
 
+    // A lone CR means "redraw this console line". CRLF remains a newline.
+
+    const auto eraseCurrentLogLine = [this]() {
+
+        const std::size_t newline =
+
+            state_.log.find_last_of('\n');
+
+
+
+        if (newline == std::string::npos) {
+
+            state_.log.clear();
+
+        } else {
+
+            state_.log.erase(newline + 1);
+
+        }
+
+    };
+
+
+
+    std::size_t textIndex = 0;
+
+
+
+    // A pipe read can split "\r\n" across two chunks.
+
+    if (logPendingCarriageReturn_) {
+
+        if (!text.empty() && text.front() == '\n') {
+
+            state_.log.push_back('\n');
+
+            textIndex = 1;
+
+        } else {
+
+            eraseCurrentLogLine();
+
+        }
+
+        logPendingCarriageReturn_ = false;
+
+    }
+
+
+
+    while (textIndex < text.size()) {
+
+        const char ch = text[textIndex];
+
+
+
+        if (ch != '\r') {
+
+            state_.log.push_back(ch);
+
+            ++textIndex;
+
+            continue;
+
+        }
+
+
+
+        if (textIndex + 1 >= text.size()) {
+
+            logPendingCarriageReturn_ = true;
+
+            break;
+
+        }
+
+
+
+        if (text[textIndex + 1] == '\n') {
+
+            state_.log.push_back('\n');
+
+            textIndex += 2;
+
+            continue;
+
+        }
+
+
+
+        eraseCurrentLogLine();
+
+        ++textIndex;
+
+    }
     // cdrtools' Windows/Cygwin build prints a number of privilege warnings
     // even when SPTI access is working normally. They are expected noise in
     // Retro Burner and would otherwise look like fatal errors to users.
@@ -811,6 +1333,15 @@ void BurnEngine::AppendLog(const std::string& text) {
             state_.log.size() - kMaximumLogBytes);
     }
 }
+void BurnEngine::SetPreparationProgress(
+    const float progress,
+    std::string status) {
+    std::lock_guard lock(mutex_);
+    state_.progress = std::clamp(progress, 0.0F, 1.0F);
+    state_.status = std::move(status);
+    state_.writing = false;
+}
+
 void BurnEngine::SetFailure(std::string message) {
     AppendLog("\r\nERROR: " + message + "\r\n");
     std::lock_guard lock(mutex_);
@@ -820,12 +1351,170 @@ void BurnEngine::SetFailure(std::string message) {
     state_.status = std::move(message);
 }
 
+void BurnEngine::RunBurnerMaxOnly(
+    BurnRequest request,
+    const std::wstring& dvdMediaInfoPath) {
+    if (request.target != BurnTarget::Xbox360 ||
+        request.xbox360DiscType != Xbox360DiscType::Xgd3) {
+        SetFailure("BurnerMAX testing is available only for Xbox 360 XGD3.");
+        return;
+    }
+    if (request.opticalDriveRoot.empty()) {
+        SetFailure("The selected Windows DVD drive has no drive letter.");
+        return;
+    }
+
+    const fs::path dvdMediaInfo(dvdMediaInfoPath);
+    if (!fs::is_regular_file(dvdMediaInfo)) {
+        SetFailure("The embedded DVD media-info backend could not be prepared.");
+        return;
+    }
+
+    const fs::path workingDirectory =
+        dvdMediaInfo.has_parent_path()
+            ? dvdMediaInfo.parent_path()
+            : fs::current_path();
+
+    static const std::regex mountedProfilePattern(
+        R"(Mounted Media:\s+([0-9A-Fa-f]+)h,)",
+        std::regex::icase);
+    static const std::regex blankDiscPattern(
+        R"(Disc status:\s+blank)",
+        std::regex::icase);
+    static const std::regex freeBlocksPattern(
+        R"(Free Blocks:\s+([0-9]+)\*2KB)",
+        std::regex::icase);
+
+    auto runMediaInfo =
+        [this, &dvdMediaInfo, &workingDirectory, &request](
+            const char* heading,
+            std::string& output) -> bool {
+            output.clear();
+            AppendLog(std::string("\r\n") + heading + "\r\n");
+
+            const auto append =
+                [this, &output](const std::string& text) {
+                    output += text;
+                    AppendLog(text);
+                };
+            const auto ignoreLine =
+                [](std::string_view) {};
+
+            const ProcessResult result = RunHiddenProcess(
+                dvdMediaInfo,
+                {request.opticalDriveRoot},
+                workingDirectory,
+                append,
+                ignoreLine);
+
+            return result.started && result.exitCode == 0;
+        };
+
+    std::string mediaInfoOutput;
+    if (!runMediaInfo(
+            "BurnerMAX DVD+R DL preflight (dvd+rw-mediainfo)",
+            mediaInfoOutput)) {
+        SetFailure(
+            "dvd+rw-mediainfo could not validate the selected DVD writer/media. "
+            "No disc data was written.");
+        return;
+    }
+
+    std::smatch match;
+    unsigned mediaProfile = 0;
+    if (std::regex_search(
+            mediaInfoOutput,
+            match,
+            mountedProfilePattern)) {
+        mediaProfile = static_cast<unsigned>(
+            std::stoul(match[1].str(), nullptr, 16));
+    }
+
+    if (mediaProfile != 0x2B) {
+        SetFailure(
+            "BurnerMAX testing requires a blank DVD+R DL in the selected drive.");
+        return;
+    }
+    if (!std::regex_search(mediaInfoOutput, blankDiscPattern)) {
+        SetFailure(
+            "BurnerMAX testing requires media positively reported as blank. "
+            "No disc data was written.");
+        return;
+    }
+
+    {
+        std::lock_guard lock(mutex_);
+        state_.status = "Scanning drive for BurnerMAX support...";
+    }
+
+    const BurnerMaxResult burnerMax = EnableBurnerMax(
+        request.opticalDriveRoot,
+        [this](const std::string& text) {
+            AppendLog(text);
+        });
+
+    if (!burnerMax.Success()) {
+        SetFailure(burnerMax.message);
+        return;
+    }
+
+    std::string refreshedMediaInfo;
+    if (!runMediaInfo(
+            "BurnerMAX capacity verification (dvd+rw-mediainfo)",
+            refreshedMediaInfo)) {
+        SetFailure(
+            "BurnerMAX vendor-command verification passed, but writable capacity "
+            "could not be re-read. Eject/reinsert the blank disc and retry.");
+        return;
+    }
+
+    constexpr std::uintmax_t kBurnerMaxFullCapacitySectors = 4267040ULL;
+    std::uintmax_t freeBlocks = 0;
+    if (std::regex_search(
+            refreshedMediaInfo,
+            match,
+            freeBlocksPattern)) {
+        freeBlocks = std::stoull(match[1].str());
+    }
+
+    if (freeBlocks < kBurnerMaxFullCapacitySectors) {
+        SetFailure(
+            "BurnerMAX layer-boundary verification passed, but the drive reports only " +
+            std::to_string(freeBlocks) +
+            " writable sectors. Full XGD3 capacity requires at least 4267040 sectors.");
+        return;
+    }
+
+    AppendLog(
+        "\r\nBurnerMAX SUCCESS\r\n"
+        "Expanded writable capacity: " +
+        std::to_string(freeBlocks) +
+        " sectors (" +
+        std::to_string(freeBlocks * 2048ULL) +
+        " bytes)\r\n"
+        "No disc sectors were written.\r\n");
+
+    std::lock_guard lock(mutex_);
+    state_.stage = BurnStage::Ready;
+    state_.busy = false;
+    state_.writing = false;
+    state_.progress = 0.0F;
+    state_.layout = "Xbox 360 XGD3 - BurnerMAX";
+    state_.status =
+        burnerMax.status == BurnerMaxStatus::AlreadyEnabled
+            ? "BurnerMAX already active. Expanded XGD3 capacity verified."
+            : "BurnerMAX enabled via " + burnerMax.backend +
+                  ". Expanded XGD3 capacity verified.";
+}
+
 void BurnEngine::RunStandardImage(
     BurnRequest request,
-    const std::wstring& cdrecordPath,
+    const std::wstring& retrobeamPath,
     const std::wstring& growisofsPath,
-    const std::wstring& dvdMediaInfoPath) {
-    const fs::path cdrecord(cdrecordPath);
+    const std::wstring& dvdMediaInfoPath,
+    const std::wstring& abgx360Path) {
+    const fs::path retrobeam(retrobeamPath);
+    const fs::path growisofs(growisofsPath);
     const fs::path imagePath(request.cdiPath);
     const fs::path workingDirectory =
         imagePath.has_parent_path()
@@ -876,17 +1565,389 @@ void BurnEngine::RunStandardImage(
         return;
     }
 
+    const bool xbox = request.target == BurnTarget::Xbox360;
+    const bool xgd3 =
+        xbox &&
+        request.xbox360DiscType == Xbox360DiscType::Xgd3;
+
+    TemporaryDirectory abgxTemporary;
+    fs::path burnImagePath = imagePath;
+
+    if (xgd3) {
+        std::wstring preparedWorkingImage;
+        const bool reusedPreparedXgd3 =
+            TryReusePreparedXgd3(
+                imagePath.wstring(),
+                preparedWorkingImage);
+
+        if (reusedPreparedXgd3) {
+            burnImagePath =
+                fs::path(preparedWorkingImage);
+
+            AppendLog(
+                "\r\nXGD3 prepared-image cache\r\n"
+                "Reusing the ABGX360-verified working copy from the successful "
+                "preflight/preparation pass.\r\n"
+                "Original ISO: " + imagePath.string() + "\r\n"
+                "Prepared ISO: " + burnImagePath.string() + "\r\n"
+                "ABGX360 copy/AutoFix/verification will not be repeated.\r\n");
+
+            SetPreparationProgress(
+                1.0F,
+                "XGD3 already prepared - reusing verified ABGX360 working copy.");
+        } else {
+            const fs::path abgx360(abgx360Path);
+            if (!fs::is_regular_file(abgx360)) {
+                SetFailure(
+                    "The embedded ABGX360 backend could not be prepared. "
+                    "XGD3 burns require an ABGX360 AutoFix pass.");
+                return;
+            }
+
+            std::error_code sourceSizeError;
+            const std::uintmax_t sourceBytes =
+                fs::file_size(imagePath, sourceSizeError);
+            if (sourceSizeError || sourceBytes == 0) {
+                SetFailure("Could not read the selected XGD3 ISO size.");
+                return;
+            }
+
+            ULARGE_INTEGER freeBytes{};
+            if (GetDiskFreeSpaceExW(
+                    workingDirectory.c_str(),
+                    &freeBytes,
+                    nullptr,
+                    nullptr) &&
+                freeBytes.QuadPart <
+                    sourceBytes + kMinimumFreeSpaceMargin) {
+                SetFailure(
+                    "Not enough free space beside the XGD3 ISO to create the "
+                    "temporary ABGX360 working copy. The original ISO is never modified.");
+                return;
+            }
+
+            {
+                std::lock_guard lock(mutex_);
+                state_.status =
+                    "Creating temporary XGD3 working copy for ABGX360...";
+                state_.writing = false;
+                state_.progress = 0.0F;
+            }
+
+            abgxTemporary = MakeTemporaryDirectoryNear(
+                workingDirectory,
+                L".RetroBurner-ABGX360");
+            if (abgxTemporary.path.empty()) {
+                SetFailure(
+                    "Could not create a temporary ABGX360 working directory "
+                    "beside the selected ISO.");
+                return;
+            }
+
+            burnImagePath =
+                abgxTemporary.path / imagePath.filename();
+
+            AppendLog(
+                "\r\nABGX360 XGD3 prerequisite\r\n"
+                "Retro Burner will AutoFix a temporary working copy.\r\n"
+                "The selected original ISO will not be modified.\r\n"
+                "Working image: " + burnImagePath.string() + "\r\n");
+
+            CopyProgressContext copyProgress{this};
+            if (!CopyFileExW(
+                    imagePath.c_str(),
+                    burnImagePath.c_str(),
+                    CopyProgressRoutine,
+                    &copyProgress,
+                    nullptr,
+                    COPY_FILE_FAIL_IF_EXISTS)) {
+                SetFailure(
+                    "Could not create the temporary ABGX360 working copy: " +
+                    Win32Error(GetLastError()));
+                return;
+            }
+
+            SetPreparationProgress(
+                0.0F,
+                "ABGX360 AutoFix Level 3 - starting...");
+
+            std::string autoFixOutput;
+            bool autoFixGameCrc = false;
+            const std::regex abgxVideoPercent(
+                R"(Checking Video CRC\.\.\.\s*([0-9]{1,3})%)",
+                std::regex::icase);
+            const std::regex abgxTablePercent(
+                R"(^\s*([0-9]{1,3})%\s+)",
+                std::regex::icase);
+            const std::regex abgxSpeed(
+                R"(([0-9]+(?:\.[0-9]+)?)\s+MB/s)",
+                std::regex::icase);
+
+            const auto appendAbgx =
+                [this, &autoFixOutput](const std::string& text) {
+                    autoFixOutput += text;
+                    AppendLog(text);
+                };
+            const auto parseAutoFixLine =
+                [this,
+                 &autoFixGameCrc,
+                 &abgxVideoPercent,
+                 &abgxTablePercent,
+                 &abgxSpeed](std::string_view line) {
+                    int percent = 0;
+
+                    if (line.rfind("Downloading ", 0) == 0) {
+                        SetPreparationProgress(
+                            0.0F,
+                            "ABGX360 AutoFix - downloading verification data...");
+                        return;
+                    }
+
+                    if (line.find("Checking Game CRC") !=
+                        std::string_view::npos) {
+                        autoFixGameCrc = true;
+                        SetPreparationProgress(
+                            0.0F,
+                            "ABGX360 AutoFix - checking game CRC...");
+                        return;
+                    }
+
+                    if (TryParsePercent(
+                            line,
+                            abgxVideoPercent,
+                            percent)) {
+                        SetPreparationProgress(
+                            static_cast<float>(percent) / 100.0F,
+                            "ABGX360 AutoFix - checking video CRC...");
+                        return;
+                    }
+
+                    if (autoFixGameCrc &&
+                        TryParsePercent(
+                            line,
+                            abgxTablePercent,
+                            percent)) {
+                        std::string detail =
+                            "ABGX360 AutoFix - checking game CRC";
+                        std::match_results<
+                            std::string_view::const_iterator> speedMatch;
+                        if (std::regex_search(
+                                line.begin(),
+                                line.end(),
+                                speedMatch,
+                                abgxSpeed)) {
+                            detail +=
+                                " - " +
+                                speedMatch[1].str() +
+                                " MB/s";
+                        }
+                        SetPreparationProgress(
+                            static_cast<float>(percent) / 100.0F,
+                            std::move(detail));
+                    }
+                };
+
+            AppendLog(
+                "\r\nABGX360 AutoFix Level 3\r\n");
+
+            const ProcessResult autoFix = RunHiddenProcess(
+                abgx360,
+                {
+                    L"-s",
+                    L"--af3",
+                    L"--",
+                    burnImagePath.wstring(),
+                },
+                abgxTemporary.path,
+                appendAbgx,
+                parseAutoFixLine);
+
+            if (!autoFix.started) {
+                SetFailure(autoFix.error);
+                return;
+            }
+            if (autoFix.exitCode != 0) {
+                SetFailure(
+                    "ABGX360 AutoFix could not complete. "
+                    "XGD3 burning has been stopped before BurnerMAX or disc writing.");
+                return;
+            }
+
+            if (ContainsCaseInsensitive(
+                    autoFixOutput,
+                    "autofix failed") ||
+                ContainsCaseInsensitive(
+                    autoFixOutput,
+                    "aborting autofix")) {
+                SetFailure(
+                    "ABGX360 reported that AutoFix failed. "
+                    "XGD3 burning has been stopped; check the ABGX360 log.");
+                return;
+            }
+
+            SetPreparationProgress(
+                0.0F,
+                "ABGX360 verification - starting read-only pass...");
+
+            std::string verifyOutput;
+            bool verifyGameCrc = false;
+            const auto appendVerify =
+                [this, &verifyOutput](const std::string& text) {
+                    verifyOutput += text;
+                    AppendLog(text);
+                };
+            const auto parseVerifyLine =
+                [this,
+                 &verifyGameCrc,
+                 &abgxVideoPercent,
+                 &abgxTablePercent,
+                 &abgxSpeed](std::string_view line) {
+                    int percent = 0;
+
+                    if (line.find("Checking Game CRC") !=
+                        std::string_view::npos) {
+                        verifyGameCrc = true;
+                        SetPreparationProgress(
+                            0.0F,
+                            "ABGX360 verification - checking game CRC...");
+                        return;
+                    }
+
+                    if (TryParsePercent(
+                            line,
+                            abgxVideoPercent,
+                            percent)) {
+                        SetPreparationProgress(
+                            static_cast<float>(percent) / 100.0F,
+                            "ABGX360 verification - checking video CRC...");
+                        return;
+                    }
+
+                    if (verifyGameCrc &&
+                        TryParsePercent(
+                            line,
+                            abgxTablePercent,
+                            percent)) {
+                        std::string detail =
+                            "ABGX360 verification - checking game CRC";
+                        std::match_results<
+                            std::string_view::const_iterator> speedMatch;
+                        if (std::regex_search(
+                                line.begin(),
+                                line.end(),
+                                speedMatch,
+                                abgxSpeed)) {
+                            detail +=
+                                " - " +
+                                speedMatch[1].str() +
+                                " MB/s";
+                        }
+                        SetPreparationProgress(
+                            static_cast<float>(percent) / 100.0F,
+                            std::move(detail));
+                    }
+                };
+
+            AppendLog(
+                "\r\nABGX360 verification - writes disabled\r\n");
+
+            const ProcessResult verify = RunHiddenProcess(
+                abgx360,
+                {
+                    L"-s",
+                    L"-w",
+                    L"-o",
+                    L"--af3",
+                    L"--",
+                    burnImagePath.wstring(),
+                },
+                abgxTemporary.path,
+                appendVerify,
+                parseVerifyLine);
+
+            if (!verify.started) {
+                SetFailure(verify.error);
+                return;
+            }
+            if (verify.exitCode != 0) {
+                SetFailure(
+                    "ABGX360 verification could not complete. "
+                    "XGD3 burning has been stopped before BurnerMAX or disc writing.");
+                return;
+            }
+
+            if (!ContainsCaseInsensitive(
+                    verifyOutput,
+                    "checking topology data")) {
+                SetFailure(
+                    "ABGX360 did not report an XGD3 topology-data check. "
+                    "Confirm that the selected image is an XGD3 Xbox 360 ISO.");
+                return;
+            }
+
+            if (ContainsCaseInsensitive(
+                    verifyOutput,
+                    "first 12 sectors of topology data are blank") ||
+                ContainsCaseInsensitive(
+                    verifyOutput,
+                    "topology data is blank") ||
+                ContainsCaseInsensitive(
+                    verifyOutput,
+                    "autofix failed") ||
+                ContainsCaseInsensitive(
+                    verifyOutput,
+                    "aborting autofix")) {
+                SetFailure(
+                    "ABGX360 verification still reports missing/unfixed XGD3 data. "
+                    "The burn has been blocked.");
+                return;
+            }
+
+            const bool onlineVerificationWarning =
+                ContainsCaseInsensitive(
+                    verifyOutput,
+                    "verification failed");
+
+            AppendLog(
+                onlineVerificationWarning
+                    ? "\r\nABGX360: AutoFix completed and topology is present. "
+                      "Online game verification was not conclusive; review the log.\r\n"
+                    : "\r\nABGX360: XGD3 AutoFix prerequisite passed.\r\n");
+
+            SetPreparationProgress(
+                1.0F,
+                onlineVerificationWarning
+                    ? "ABGX360 patched XGD3; online verification warning - continuing preflight..."
+                    : "ABGX360 XGD3 prerequisite passed.");
+
+            const fs::path retainedDirectory =
+                abgxTemporary.Release();
+            StorePreparedXgd3(
+                imagePath.wstring(),
+                retainedDirectory.wstring(),
+                burnImagePath.wstring());
+
+            AppendLog(
+                "\r\nXGD3 prepared working copy cached for this Retro Burner session.\r\n"
+                "A following Burn will reuse this verified copy instead of repeating "
+                "the ISO copy and ABGX360 passes.\r\n");
+        }
+    }
+
     if (dvdTarget) {
         if (request.opticalDriveRoot.empty()) {
             SetFailure("The selected Windows DVD drive has no drive letter.");
             return;
         }
 
-        const fs::path growisofs(growisofsPath);
         const fs::path dvdMediaInfo(dvdMediaInfoPath);
-        if (!fs::is_regular_file(growisofs) ||
-            !fs::is_regular_file(dvdMediaInfo)) {
-            SetFailure("The embedded DVD recording backend could not be prepared.");
+        if (!fs::is_regular_file(dvdMediaInfo) ||
+            (!request.useGrowisofsForDvd && !fs::is_regular_file(retrobeam)) ||
+            (request.useGrowisofsForDvd && !fs::is_regular_file(growisofs))) {
+            SetFailure(
+                request.useGrowisofsForDvd
+                    ? "The embedded growisofs/DVD media backend could not be prepared."
+                    : "The embedded RetroBeam/DVD media backend could not be prepared.");
             return;
         }
 
@@ -947,7 +2008,7 @@ void BurnEngine::RunStandardImage(
 
         std::error_code sizeError;
         const std::uintmax_t imageBytes =
-            fs::file_size(imagePath, sizeError);
+            fs::file_size(burnImagePath, sizeError);
         if (sizeError || imageBytes == 0) {
             SetFailure("Could not read the selected image size.");
             return;
@@ -987,184 +2048,810 @@ void BurnEngine::RunStandardImage(
             return;
         }
 
-        if (std::regex_search(
-                mediaInfoOutput,
-                mediaMatch,
-                freeBlocksPattern)) {
-            const std::uintmax_t freeBlocks =
-                std::stoull(mediaMatch[1].str());
-            const std::uintmax_t reportedCapacity =
-                freeBlocks * 2048ULL;
-            if (imageBytes > reportedCapacity) {
-                if (request.target == BurnTarget::Xbox360 &&
-                    request.xbox360DiscType == Xbox360DiscType::Xgd3) {
-                    SetFailure(
-                        "The XGD3 image is larger than the capacity reported by this "
-                        "drive/media combination. XGD3 requires a BurnerMAX-compatible "
-                        "DVD+R DL writer/firmware with expanded writable capacity.");
-                } else {
-                    SetFailure(
-                        "The selected image does not fit the writable capacity reported "
-                        "for the inserted DVD.");
-                }
+        if (!request.useGrowisofsForDvd) {
+            if (request.cdrecordDevice.empty()) {
+                SetFailure(
+                    "RetroBeam has no mapped SCSI address for the selected DVD writer. "
+                    "Press Refresh and try again.");
+                return;
+            }
+
+            AppendLog("\r\nRetroBeam read-only drive preflight\r\n");
+            const ProcessResult retrobeamPreflight = RunHiddenProcess(
+                retrobeam,
+                {
+                    L"dev=" + std::wstring(
+                        request.cdrecordDevice.begin(),
+                        request.cdrecordDevice.end()),
+                    L"-checkdrive",
+                },
+                workingDirectory,
+                [this](const std::string& text) { AppendLog(text); },
+                ignoreLine);
+            if (!retrobeamPreflight.started) {
+                SetFailure(retrobeamPreflight.error);
+                return;
+            }
+            if (retrobeamPreflight.exitCode != 0) {
+                SetFailure(
+                    "RetroBeam could not validate the selected DVD writer. "
+                    "No image data was written.");
+                return;
+            }
+        } else {
+            AppendLog(
+                "\r\nDVD backend selected: growisofs\r\n"
+                "RetroBeam drive preflight is intentionally skipped for this A/B path.\r\n");
+        }
+
+        if (xgd3) {
+            {
+                std::lock_guard lock(mutex_);
+                state_.status = "Testing / enabling BurnerMAX for XGD3...";
+            }
+
+            const BurnerMaxResult burnerMax = EnableBurnerMax(
+                request.opticalDriveRoot,
+                [this](const std::string& text) {
+                    AppendLog(text);
+                });
+
+            if (!burnerMax.Success()) {
+                SetFailure(
+                    "XGD3 BurnerMAX preflight failed: " +
+                    burnerMax.message);
+                return;
+            }
+
+            mediaInfoOutput.clear();
+            AppendLog(
+                "\r\nDVD media capacity after BurnerMAX (dvd+rw-mediainfo)\r\n");
+
+            const ProcessResult refreshedMediaInfo = RunHiddenProcess(
+                dvdMediaInfo,
+                {request.opticalDriveRoot},
+                workingDirectory,
+                appendMediaInfo,
+                ignoreLine);
+
+            if (!refreshedMediaInfo.started ||
+                refreshedMediaInfo.exitCode != 0) {
+                SetFailure(
+                    "BurnerMAX verification succeeded, but Retro Burner could not "
+                    "re-read the expanded writable capacity. No image data was written.");
                 return;
             }
         }
 
-        const bool xbox = request.target == BurnTarget::Xbox360;
-        const bool xgd3 =
-            xbox &&
-            request.xbox360DiscType == Xbox360DiscType::Xgd3;
+        std::uintmax_t freeBlocks = 0;
+        const bool capacityReported =
+            std::regex_search(
+                mediaInfoOutput,
+                mediaMatch,
+                freeBlocksPattern);
+        if (capacityReported) {
+            freeBlocks = std::stoull(mediaMatch[1].str());
+        }
+
+        if (xgd3) {
+            constexpr std::uintmax_t kBurnerMaxFullCapacitySectors =
+                4267040ULL;
+            if (!capacityReported) {
+                SetFailure(
+                    "BurnerMAX layer-boundary verification passed, but the drive "
+                    "did not report writable capacity. No image data was written.");
+                return;
+            }
+            if (freeBlocks < kBurnerMaxFullCapacitySectors) {
+                SetFailure(
+                    "BurnerMAX layer-boundary verification passed, but the drive "
+                    "reports only " +
+                    std::to_string(freeBlocks) +
+                    " writable sectors. Full XGD3 capacity requires at least "
+                    "4267040 sectors.");
+                return;
+            }
+
+            AppendLog(
+                "\r\nBurnerMAX expanded capacity verified: " +
+                std::to_string(freeBlocks) +
+                " sectors.\r\n");
+        }
+
+        if (capacityReported) {
+            const std::uintmax_t reportedCapacity =
+                freeBlocks * 2048ULL;
+            if (imageBytes > reportedCapacity) {
+                SetFailure(
+                    "The selected image does not fit the writable capacity reported "
+                    "for the inserted DVD.");
+                return;
+            }
+        }
+
         const std::string targetDescription =
             xbox
                 ? (xgd3 ? "Xbox 360 XGD3" : "Xbox 360 XGD2")
                 : "PlayStation 2 DVD";
 
-        {
-            std::lock_guard lock(mutex_);
-            state_.stage = BurnStage::BurningSession1;
-            state_.busy = true;
-            state_.writing = !request.simulate;
-            state_.session = 1;
-            state_.progress = 0.0F;
-            state_.bufferPercent = -1;
-            state_.ringBufferPercent = -1;
-            state_.driveBufferPercent = -1;
-            state_.actualSpeed.clear();
-            state_.remainingTime.clear();
-            state_.status = request.simulate
-                ? targetDescription + " dry run - no write..."
-                : "Writing " + targetDescription + "...";
-        }
+        // RB_DVD_BACKEND_SELECTOR_RESTORED_V84F
+        // RetroBeam is the default backend, but growisofs remains available
+        // for drive/media compatibility and A/B testing.
+        if (request.useGrowisofsForDvd) {
+            {
+                std::lock_guard lock(mutex_);
+                state_.stage = BurnStage::BurningSession1;
+                state_.busy = true;
+                state_.writing = !request.simulate;
+                state_.progress = 0.0F;
+                state_.session = 1;
+                state_.bufferPercent = -1;
+                state_.ringBufferPercent = -1;
+                state_.driveBufferPercent = -1;
+                state_.actualSpeed.clear();
+                state_.remainingTime.clear();
+                state_.status = request.simulate
+                    ? targetDescription + " growisofs dry run - no write..."
+                    : "Writing " + targetDescription + " with growisofs...";
+            }
 
-        std::vector<std::wstring> arguments;
-        if (request.simulate) {
-            arguments.emplace_back(L"-dry-run");
-        }
-        if (xbox) {
-            arguments.emplace_back(L"-use-the-force-luke=dao");
-            arguments.push_back(
-                L"-use-the-force-luke=break:" +
-                std::to_wstring(xgd3 ? 2133520 : 1913760));
-        }
-        arguments.emplace_back(L"-dvd-compat");
-        if (request.requestedSpeedX > 0) {
-            arguments.push_back(
-                L"-speed=" + std::to_wstring(request.requestedSpeedX));
-        }
-        arguments.emplace_back(L"-Z");
-        arguments.push_back(
-            request.opticalDriveRoot + L"=" + imagePath.wstring());
+            bool ps2GrowisofsDualLayer = false;
+            std::uint64_t ps2GrowisofsLayerBreak = 0;
 
-        AppendLog(
-            request.simulate
-                ? "\r\nDVD DRY RUN - growisofs -dry-run\r\n"
-                : "\r\nDVD WRITE - growisofs\r\n");
+            if (request.target == BurnTarget::PlayStation2Dvd) {
+                std::error_code ps2GrowisofsSizeError;
+                const std::uintmax_t ps2ImageBytes =
+                    fs::file_size(
+                        burnImagePath,
+                        ps2GrowisofsSizeError);
 
-        static const std::regex growProgressPattern(
-            R"(\(\s*([0-9]+(?:\.[0-9]+)?)%\)\s+@([0-9]+(?:\.[0-9]+)?)x,\s+remaining\s+([0-9?:]+)\s+RBU\s+([0-9]+(?:\.[0-9]+)?)%\s+UBU\s+([0-9]+(?:\.[0-9]+)?)%)",
-            std::regex::icase);
+                constexpr std::uintmax_t kDvdRSingleLayerBytes =
+                    4707319808ULL;
+                constexpr std::uintmax_t kDvdPlusRDualLayerNominalBytes =
+                    8547991552ULL;
 
-        const OutputCallback parseGrowisofs =
-            [this, targetDescription](const std::string_view lineView) {
-                const std::string line(lineView);
-                std::smatch match;
-                if (!std::regex_search(
-                        line,
-                        match,
-                        growProgressPattern)) {
+                if (ps2GrowisofsSizeError ||
+                    ps2ImageBytes == 0 ||
+                    (ps2ImageBytes % 2048ULL) != 0ULL) {
+                    SetFailure(
+                        "Could not determine a valid 2048-byte-sector PS2 DVD ISO size.");
                     return;
                 }
 
-                const float percent =
-                    std::stof(match[1].str());
-                const std::string speed =
-                    match[2].str() + "x";
-                const std::string remaining =
-                    match[3].str();
-                const int rbu =
-                    static_cast<int>(std::lround(
-                        std::stod(match[4].str())));
-                const int ubu =
-                    static_cast<int>(std::lround(
-                        std::stod(match[5].str())));
+                if (ps2ImageBytes > kDvdPlusRDualLayerNominalBytes) {
+                    SetFailure(
+                        "The PS2 DVD ISO is larger than nominal DVD9 capacity.");
+                    return;
+                }
 
-                std::lock_guard lock(mutex_);
-                state_.progress = std::clamp(
-                    percent / 100.0F,
-                    state_.progress,
-                    0.999F);
-                state_.actualSpeed = speed;
-                state_.remainingTime = remaining;
-                state_.ringBufferPercent =
-                    std::clamp(rbu, 0, 100);
-                state_.driveBufferPercent =
-                    std::clamp(ubu, 0, 100);
-                state_.status =
-                    "Writing " + targetDescription + " - " +
-                    std::to_string(
-                        static_cast<int>(std::lround(percent))) +
-                    "%";
-            };
+                ps2GrowisofsDualLayer =
+                    ps2ImageBytes > kDvdRSingleLayerBytes;
 
-        const auto append =
-            [this](const std::string& text) {
-                AppendLog(text);
-            };
+                if (ps2GrowisofsDualLayer) {
+                    const std::uint64_t totalSectors =
+                        static_cast<std::uint64_t>(
+                            ps2ImageBytes / 2048ULL);
+                    const std::uint64_t minimumLayer0 =
+                        (totalSectors + 1ULL) / 2ULL;
 
-        const ProcessResult result = RunHiddenProcess(
-            growisofs,
-            arguments,
-            workingDirectory,
-            append,
-            parseGrowisofs);
+                    ps2GrowisofsLayerBreak =
+                        (minimumLayer0 + 15ULL) &
+                        ~std::uint64_t{15ULL};
 
-        if (!result.started) {
-            SetFailure(result.error);
-            return;
-        }
-        if (result.exitCode != 0) {
-            SetFailure(
+                    if (ps2GrowisofsLayerBreak >= totalSectors) {
+                        SetFailure(
+                            "Could not calculate a valid PS2 DVD9 layer break.");
+                        return;
+                    }
+
+                    AppendLog(
+                        "\r\nPS2 DVD mode: DVD9 / dual-layer "
+                        "(selected automatically from ISO size)\r\n"
+                        "Calculated PS2 DVD9 layer break: " +
+                        std::to_string(ps2GrowisofsLayerBreak) +
+                        " sectors\r\n");
+                } else {
+                    AppendLog(
+                        "\r\nPS2 DVD mode: DVD5 / single-layer "
+                        "(selected automatically from ISO size)\r\n");
+                }
+            }
+
+            std::vector<std::wstring> arguments;
+            if (request.simulate) {
+                arguments.emplace_back(L"-dry-run");
+            }
+
+            // Console DVD policy: explicitly request DAO.
+            arguments.emplace_back(L"-use-the-force-luke=dao");
+
+            if (xbox || ps2GrowisofsDualLayer) {
+                const std::uint64_t selectedLayerBreak =
+                    xbox
+                        ? static_cast<std::uint64_t>(
+                            xgd3 ? 2133520 : 1913760)
+                        : ps2GrowisofsLayerBreak;
+
+                arguments.push_back(
+                    L"-use-the-force-luke=break:" +
+                    std::to_wstring(selectedLayerBreak));
+            }
+
+            arguments.emplace_back(L"-dvd-compat");
+            if (request.requestedSpeedX > 0) {
+                arguments.push_back(
+                    L"-speed=" + std::to_wstring(request.requestedSpeedX));
+            }
+            arguments.emplace_back(L"-Z");
+            arguments.push_back(
+                request.opticalDriveRoot + L"=" + burnImagePath.wstring());
+
+            AppendLog(
                 request.simulate
-                    ? targetDescription +
-                          " dry run failed. No image data was intentionally written."
-                    : targetDescription +
-                          " write failed. The disc may be incomplete; check the burn log.");
-            return;
-        }
+                    ? "\r\nDVD DRY RUN - growisofs -dry-run\r\nWrite type: DAO\r\n"
+                    : "\r\nDVD WRITE - growisofs\r\nWrite type: DAO\r\n");
 
-        if (request.simulate) {
+            static const std::regex growProgressPattern(
+                R"(\(\s*([0-9]+(?:\.[0-9]+)?)%\)\s+@([0-9]+(?:\.[0-9]+)?)x,\s+remaining\s+([0-9?:]+)\s+RBU\s+([0-9]+(?:\.[0-9]+)?)%\s+UBU\s+([0-9]+(?:\.[0-9]+)?)%)",
+                std::regex::icase);
+
+            const OutputCallback parseGrowisofs =
+                [this, targetDescription](const std::string_view lineView) {
+                    const std::string line(lineView);
+
+                    // RB_RETROBEAM_PHASE_TEXT_V84B
+                    std::string backendPhase;
+                    if (ContainsCaseInsensitive(line, "lead-in") ||
+                        ContainsCaseInsensitive(line, "leadin")) {
+                        backendPhase = "Writing Lead-In...";
+                    } else if (
+                        ContainsCaseInsensitive(line, "starting new track") ||
+                        ContainsCaseInsensitive(line, "writing track")) {
+                        backendPhase = "Writing Sectors...";
+                    } else if (
+                        ContainsCaseInsensitive(line, "fixating") ||
+                        ContainsCaseInsensitive(line, "closing session") ||
+                        ContainsCaseInsensitive(line, "lead-out") ||
+                        ContainsCaseInsensitive(line, "leadout")) {
+                        backendPhase = "Finalising Disc...";
+                    }
+
+                    if (!backendPhase.empty()) {
+                        std::lock_guard phaseLock(mutex_);
+                        state_.status = std::move(backendPhase);
+                    }
+
+                    std::smatch match;
+                    if (!std::regex_search(
+                            line,
+                            match,
+                            growProgressPattern)) {
+                        return;
+                    }
+
+                    const float percent =
+                        std::stof(match[1].str());
+                    const std::string speed =
+                        match[2].str() + "x";
+                    const std::string remaining =
+                        match[3].str();
+                    const int rbu =
+                        static_cast<int>(std::lround(
+                            std::stod(match[4].str())));
+                    const int ubu =
+                        static_cast<int>(std::lround(
+                            std::stod(match[5].str())));
+
+                    std::lock_guard lock(mutex_);
+                    state_.progress = std::clamp(
+                        percent / 100.0F,
+                        state_.progress,
+                        0.999F);
+                    state_.actualSpeed = speed;
+                    state_.remainingTime = remaining;
+                    state_.ringBufferPercent =
+                        std::clamp(rbu, 0, 100);
+                    state_.driveBufferPercent =
+                        std::clamp(ubu, 0, 100);
+                    state_.status =
+                        "Writing " + targetDescription + " - " +
+                        std::to_string(
+                            static_cast<int>(std::lround(percent))) +
+                        "%";
+                };
+
+            const ProcessResult result = RunHiddenProcess(
+                growisofs,
+                arguments,
+                workingDirectory,
+                [this](const std::string& text) {
+                    AppendLog(text);
+                },
+                parseGrowisofs);
+
+            if (!result.started) {
+                SetFailure(result.error);
+                return;
+            }
+            if (result.exitCode != 0) {
+                SetFailure(
+                    request.simulate
+                        ? targetDescription +
+                              " growisofs dry run failed. No image data was intentionally written."
+                        : targetDescription +
+                              " growisofs write failed. The disc may be incomplete; check the burn log.");
+                return;
+            }
+
+            if (request.simulate) {
+                std::lock_guard lock(mutex_);
+                state_.stage = BurnStage::Ready;
+                state_.busy = false;
+                state_.writing = false;
+                state_.progress = xgd3 ? 1.0F : 0.0F;
+                state_.status =
+                    xgd3
+                        ? "XGD3 growisofs preflight passed. Prepared ABGX360 copy cached; Burn will reuse it."
+                        : targetDescription +
+                              " growisofs dry run completed successfully. No image data was written.";
+                return;
+            }
+
+            if (xgd3) {
+                AppendLog(
+                    "\r\nXGD3 growisofs burn completed successfully. "
+                    "Removing the cached prepared working copy.\r\n");
+                ClearPreparedXgd3();
+            }
+
+            const bool ejected =
+                EjectOpticalDrive(request.opticalDriveRoot);
+            if (!ejected) {
+                AppendLog(
+                    "\r\nWARNING: Burn succeeded, but Windows could not automatically eject the disc.\r\n");
+            }
+
+            PlayBurnCompleteSound();
+
             std::lock_guard lock(mutex_);
-            state_.stage = BurnStage::Ready;
+            state_.stage = BurnStage::Complete;
             state_.busy = false;
             state_.writing = false;
-            state_.progress = 0.0F;
-            state_.status =
-                targetDescription +
-                " dry run completed successfully. No image data was written.";
+            state_.progress = 1.0F;
+            state_.session = 1;
+            state_.remainingTime = "00:00";
+            state_.status = ejected
+                ? "Burn complete! Disc ejected. Backend: growisofs."
+                : "Burn complete! Backend: growisofs.";
             return;
         }
 
-        const bool ejected =
-            EjectOpticalDrive(request.opticalDriveRoot);
-        if (!ejected) {
+        // RB_RETROBEAM_UNIFIED_DVD_BACKEND
+        // RetroBeam is the default RetroBurner DVD backend. PS2 DVD5/DVD9
+        // mode remains automatic from ISO size; Xbox keeps its format layer break.
+        {
+            const bool ps2Dvd =
+                request.target == BurnTarget::PlayStation2Dvd;
+
+            if (request.cdrecordDevice.empty()) {
+                SetFailure(
+                    "RetroBeam/libscg has no mapped SCSI address for the selected writer. "
+                    "Refresh the optical-drive list and try again.");
+                return;
+            }
+
+            if (!fs::is_regular_file(retrobeam)) {
+                SetFailure(
+                    "The embedded RetroBeam backend could not be prepared.");
+                return;
+            }
+
+            bool ps2DualLayer = false;
+            std::uint64_t ps2LayerBreak = 0;
+            std::uintmax_t ps2ImageBytes = 0;
+
+            if (ps2Dvd) {
+                std::error_code ps2SizeError;
+                ps2ImageBytes =
+                    fs::file_size(burnImagePath, ps2SizeError);
+
+                constexpr std::uintmax_t kDvdRSingleLayerBytes =
+                    4707319808ULL;
+                constexpr std::uintmax_t kDvdPlusRDualLayerNominalBytes =
+                    8547991552ULL;
+
+                if (ps2SizeError ||
+                    ps2ImageBytes == 0 ||
+                    (ps2ImageBytes % 2048ULL) != 0ULL) {
+                    SetFailure(
+                        "Could not determine a valid 2048-byte-sector PS2 DVD ISO size.");
+                    return;
+                }
+
+                if (ps2ImageBytes >
+                    kDvdPlusRDualLayerNominalBytes) {
+                    SetFailure(
+                        "The PS2 DVD ISO is larger than nominal DVD9 capacity.");
+                    return;
+                }
+
+                ps2DualLayer =
+                    ps2ImageBytes > kDvdRSingleLayerBytes;
+
+                if (ps2DualLayer) {
+                    const std::uint64_t totalSectors =
+                        static_cast<std::uint64_t>(
+                            ps2ImageBytes / 2048ULL);
+
+                    // RetroBeam requires a manual DVD DL break to be at least
+                    // half the recorded data size and aligned to a 16-sector
+                    // DVD ECC block. Round ceil(total/2) upward to 16 sectors.
+                    const std::uint64_t minimumLayer0 =
+                        (totalSectors + 1ULL) / 2ULL;
+
+                    ps2LayerBreak =
+                        (minimumLayer0 + 15ULL) &
+                        ~std::uint64_t{15ULL};
+
+                    if (ps2LayerBreak >= totalSectors) {
+                        SetFailure(
+                            "Could not calculate a valid PS2 DVD9 layer break.");
+                        return;
+                    }
+                }
+            }
+
             AppendLog(
-                "\r\nWARNING: Burn succeeded, but Windows could not automatically eject the disc.\r\n");
+                std::string("\r\n") +
+                (ps2Dvd
+                    ? "PS2 DVD BACKEND: RetroBeam / libscg\r\n"
+                    : "Xbox 360 DVD BACKEND: RetroBeam / libscg\r\n") +
+                "RetroBeam device: " +
+                request.cdrecordDevice +
+                "\r\n");
+
+            if (ps2Dvd) {
+                AppendLog(
+                    std::string("PS2 DVD mode: ") +
+                    (ps2DualLayer ? "DVD9 / dual-layer" : "DVD5 / single-layer") +
+                    " (selected automatically from ISO size)\r\n");
+
+                if (ps2DualLayer) {
+                    AppendLog(
+                        "Calculated PS2 DVD9 layer break: " +
+                        std::to_string(ps2LayerBreak) +
+                        " sectors\r\n");
+                }
+            } else {
+                AppendLog(
+                    "Xbox layer break: " +
+                    std::to_string(
+                        xgd3 ? 2133520 : 1913760) +
+                    "\r\n");
+            }
+
+            // Keep no-write/preflight actions truly no-write. In particular,
+            // DVD+R does not offer a generally useful dummy-write mode.
+            if (request.simulate) {
+                AppendLog("Write type: DAO (locked for console DVD media)\r\n");
+            AppendLog(RetroBeamAdvancedPolicyText(request));
+                AppendLog(
+                    "RetroBeam drive/backend preflight complete. "
+                    "No media WRITE command was issued and no disc sectors were written.\r\n");
+
+                std::lock_guard lock(mutex_);
+                state_.stage = BurnStage::Ready;
+                state_.busy = false;
+                state_.writing = false;
+                state_.progress = 0.0F;
+                state_.status =
+                    targetDescription +
+                    " preflight passed using RetroBeam. "
+                    "No disc sectors were written.";
+                return;
+            }
+
+            {
+                std::lock_guard lock(mutex_);
+                state_.stage = BurnStage::BurningSession1;
+                state_.busy = true;
+                state_.writing = true;
+                state_.session = 1;
+                state_.progress = 0.0F;
+                state_.bufferPercent = -1;
+                state_.ringBufferPercent = -1;
+                state_.driveBufferPercent = -1;
+                state_.actualSpeed.clear();
+                state_.remainingTime.clear();
+                state_.status =
+                    "Writing " + targetDescription +
+                    " with RetroBeam...";
+            }
+
+            std::vector<std::wstring> retrobeamArguments;
+            retrobeamArguments.push_back(
+                L"dev=" + std::wstring(
+                    request.cdrecordDevice.begin(),
+                    request.cdrecordDevice.end()));
+            retrobeamArguments.emplace_back(L"-v");
+            retrobeamArguments.emplace_back(L"-dao");
+
+            if (request.requestedSpeedX > 0) {
+                retrobeamArguments.push_back(
+                    L"speed=" +
+                    std::to_wstring(request.requestedSpeedX));
+            }
+
+            retrobeamArguments.emplace_back(L"fs=32m");
+
+            const std::uint64_t selectedLayerBreak =
+                xbox
+                    ? static_cast<std::uint64_t>(xgd3 ? 2133520 : 1913760)
+                    : (ps2DualLayer ? ps2LayerBreak : 0ULL);
+
+            retrobeamArguments.push_back(
+                JoinRetroBeamDriverOptions(request, selectedLayerBreak));
+
+            retrobeamArguments.emplace_back(L"-data");
+            retrobeamArguments.push_back(
+                burnImagePath.wstring());
+
+            AppendLog(RetroBeamAdvancedPolicyText(request));
+            AppendLog(
+                ps2Dvd
+                    ? (ps2DualLayer
+                        ? "Starting RetroBeam PS2 DVD9 write...\r\n"
+                        : "Starting RetroBeam PS2 DVD5 write...\r\n")
+                    : "Starting RetroBeam Xbox 360 DVD+R DL write...\r\n");
+
+            static const std::regex cdrecordProgressPattern(
+                R"(Track\s+(\d+):\s+([0-9]+(?:\.[0-9]+)?)\s+of\s+([0-9]+(?:\.[0-9]+)?)\s+([kMGT]?B)\s+written)",
+                std::regex::icase);
+            static const std::regex cdrecordFifoPattern(
+
+                R"(\(fifo\s*([0-9]+)%\))",
+
+                std::regex::icase);
+
+            static const std::regex cdrecordBufferPattern(
+                R"(\[buf\s*([0-9]+)%\])");
+            static const std::regex cdrecordSpeedPattern(
+                R"(([0-9]+(?:\.[0-9]+)?)x)");
+            static const std::regex cdrecordStartSpeedPattern(
+                R"(Starting to write.*speed\s+([0-9]+(?:\.[0-9]+)?))",
+                std::regex::icase);
+
+            const auto appendRetroBeam =
+                [this](const std::string& outputText) {
+                    AppendLog(outputText);
+                };
+
+            const OutputCallback parseRetroBeam =
+                [this, targetDescription](const std::string_view lineView) {
+                    const std::string line(lineView);
+
+                    // RB_RETROBEAM_PHASE_TEXT_V84B
+                    std::string backendPhase;
+                    if (ContainsCaseInsensitive(line, "lead-in") ||
+                        ContainsCaseInsensitive(line, "leadin")) {
+                        backendPhase = "Writing Lead-In...";
+                    } else if (
+                        ContainsCaseInsensitive(line, "starting new track") ||
+                        ContainsCaseInsensitive(line, "writing track")) {
+                        backendPhase = "Writing Sectors...";
+                    } else if (
+                        ContainsCaseInsensitive(line, "fixating") ||
+                        ContainsCaseInsensitive(line, "closing session") ||
+                        ContainsCaseInsensitive(line, "lead-out") ||
+                        ContainsCaseInsensitive(line, "leadout")) {
+                        backendPhase = "Finalising Disc...";
+                    }
+
+                    if (!backendPhase.empty()) {
+                        std::lock_guard phaseLock(mutex_);
+                        state_.status = std::move(backendPhase);
+                    }
+
+                    std::smatch match;
+                    float progress = -1.0F;
+                    int fifoPercent = -1;
+                    int bufferPercent = -1;
+                    std::string speed;
+
+                    if (std::regex_search(
+                            line,
+                            match,
+                            cdrecordProgressPattern)) {
+                        const double written =
+                            std::stod(match[2].str()) *
+                            UnitMultiplier(match[4].str());
+                        const double total =
+                            std::stod(match[3].str()) *
+                            UnitMultiplier(match[4].str());
+
+                        if (total > 0.0) {
+                            progress =
+                                static_cast<float>(
+                                    std::clamp(
+                                        written / total,
+                                        0.0,
+                                        0.999));
+                        }
+                    }
+
+                    if (std::regex_search(
+
+
+                            line,
+
+
+                            match,
+
+
+                            cdrecordFifoPattern)) {
+
+
+                        fifoPercent =
+
+
+                            std::stoi(match[1].str());
+
+
+                    }
+
+
+                    if (std::regex_search(
+                            line,
+                            match,
+                            cdrecordBufferPattern)) {
+                        bufferPercent =
+                            std::stoi(match[1].str());
+                    }
+
+                    if (std::regex_search(
+                            line,
+                            match,
+                            cdrecordStartSpeedPattern)) {
+                        speed = match[1].str() + "x";
+                    } else if (std::regex_search(
+                                   line,
+                                   match,
+                                   cdrecordSpeedPattern)) {
+                        speed = match[1].str() + "x";
+                    }
+
+                    if (progress >= 0.0F ||
+                        fifoPercent >= 0 ||
+                        bufferPercent >= 0 ||
+                        !speed.empty()) {
+                        std::lock_guard lock(mutex_);
+
+                        if (progress >= 0.0F) {
+                            state_.progress =
+                                std::max(
+                                    state_.progress,
+                                    progress);
+                            state_.status =
+                                "Writing " +
+                                targetDescription +
+                                " with RetroBeam - " +
+                                std::to_string(
+                                    static_cast<int>(
+                                        std::lround(
+                                            state_.progress *
+                                            100.0F))) +
+                                "%";
+                        }
+
+                        if (bufferPercent >= 0) {
+
+
+                            const int clampedBuffer =
+
+
+                                std::clamp(bufferPercent, 0, 100);
+
+
+                            state_.bufferPercent = clampedBuffer;
+
+
+                            state_.driveBufferPercent = clampedBuffer;
+
+
+                        }
+
+                        if (fifoPercent >= 0) {
+
+
+                            state_.ringBufferPercent =
+
+
+                                std::clamp(fifoPercent, 0, 100);
+
+
+                        }
+
+
+                        if (!speed.empty()) {
+                            state_.actualSpeed =
+                                std::move(speed);
+                        }
+                    }
+                };
+
+            const ProcessResult retrobeamResult =
+                RunHiddenProcess(
+                    retrobeam,
+                    retrobeamArguments,
+                    workingDirectory,
+                    appendRetroBeam,
+                    parseRetroBeam);
+
+            if (request.advanced.useStreamingPolicy &&
+                request.advanced.restoreStreamingDefaults) {
+                AppendLog("\r\nRestoring RetroBeam MMC streaming defaults...\r\n");
+                const ProcessResult restoreResult = RunHiddenProcess(
+                    retrobeam,
+                    {
+                        L"dev=" + std::wstring(
+                            request.cdrecordDevice.begin(),
+                            request.cdrecordDevice.end()),
+                        L"driveropts=streamrestore",
+                        L"-setdropts",
+                    },
+                    workingDirectory,
+                    appendRetroBeam,
+                    [](std::string_view) {});
+                if (!restoreResult.started || restoreResult.exitCode != 0) {
+                    AppendLog(
+                        "WARNING: RetroBeam could not restore MMC streaming defaults. "
+                        "Power-cycling the drive will clear volatile settings.\r\n");
+                }
+            }
+
+            if (!retrobeamResult.started) {
+                SetFailure(retrobeamResult.error);
+                return;
+            }
+
+            if (retrobeamResult.exitCode != 0) {
+                SetFailure(
+                    targetDescription +
+                    " RetroBeam write failed. "
+                    "The disc may be incomplete; check the burn log.");
+                return;
+            }
+
+            if (xgd3) {
+                AppendLog(
+                    "\r\nXGD3 burn completed successfully. "
+                    "Removing the cached prepared working copy.\r\n");
+                ClearPreparedXgd3();
+            }
+
+            const bool ejected =
+                EjectOpticalDrive(
+                    request.opticalDriveRoot);
+
+            if (!ejected) {
+                AppendLog(
+                    "\r\nWARNING: Burn succeeded, but Windows could not automatically eject the disc.\r\n");
+            }
+
+            PlayBurnCompleteSound();
+
+            std::lock_guard lock(mutex_);
+            state_.stage = BurnStage::Complete;
+            state_.busy = false;
+            state_.writing = false;
+            state_.progress = 1.0F;
+            state_.session = 1;
+            state_.remainingTime = "00:00";
+            state_.status = ejected
+                ? "Burn complete! Disc ejected. Backend: RetroBeam."
+                : "Burn complete! Backend: RetroBeam.";
+            return;
         }
-
-        PlayBurnCompleteSound();
-
-        std::lock_guard lock(mutex_);
-        state_.stage = BurnStage::Complete;
-        state_.busy = false;
-        state_.writing = false;
-        state_.progress = 1.0F;
-        state_.session = 1;
-        state_.remainingTime = "00:00";
-        state_.status = ejected
-            ? "Burn complete! Disc ejected."
-            : "Burn complete!";
-        return;
     }
 
     const auto append =
@@ -1183,7 +2870,7 @@ void BurnEngine::RunStandardImage(
     };
 
     const ProcessResult preflight = RunHiddenProcess(
-        cdrecord,
+        retrobeam,
         preflightArguments,
         workingDirectory,
         append,
@@ -1227,9 +2914,12 @@ void BurnEngine::RunStandardImage(
 
     if (request.requestedSpeedX > 0) {
         arguments.push_back(
-            L"-speed=" +
+            L"speed=" +
             std::to_wstring(request.requestedSpeedX));
     }
+
+    arguments.push_back(JoinRetroBeamDriverOptions(request));
+    AppendLog(RetroBeamAdvancedPolicyText(request));
 
     arguments.emplace_back(L"-eject");
     arguments.emplace_back(L"-dao");
@@ -1348,7 +3038,7 @@ void BurnEngine::RunStandardImage(
         };
 
     const ProcessResult result = RunHiddenProcess(
-        cdrecord,
+        retrobeam,
         arguments,
         workingDirectory,
         append,
@@ -1385,16 +3075,25 @@ void BurnEngine::Run(BurnRequest request) {
 
     const fs::path appDirectory = tools.directory;
     const fs::path cdirip = tools.cdirip;
-    const fs::path cdrecord = tools.cdrecord;
+    const fs::path retrobeam = tools.retrobeam;
     const fs::path growisofs = tools.growisofs;
     const fs::path dvdMediaInfo = tools.dvdMediaInfo;
+    const fs::path abgx360 = tools.abgx360;
+
+    if (request.burnerMaxOnly) {
+        RunBurnerMaxOnly(
+            std::move(request),
+            dvdMediaInfo.wstring());
+        return;
+    }
 
     if (request.target != BurnTarget::Dreamcast) {
         RunStandardImage(
             std::move(request),
-            cdrecord.wstring(),
+            retrobeam.wstring(),
             growisofs.wstring(),
-            dvdMediaInfo.wstring());
+            dvdMediaInfo.wstring(),
+            abgx360.wstring());
         return;
     }
     TemporaryDirectory temporary = MakeTemporaryDirectory();
@@ -1417,14 +3116,14 @@ void BurnEngine::Run(BurnRequest request) {
     const auto ignoreLine = [](std::string_view) {};
 
     if (!request.checkOnly) {
-        AppendLog("Dreamcast Burner - read-only media preflight\r\n");
+        AppendLog("Retro Burner - read-only media preflight\r\n");
         const std::vector<std::wstring> preflightArguments = {
             L"dev=" + std::wstring(
                 request.cdrecordDevice.begin(), request.cdrecordDevice.end()),
             L"-atip",
         };
         const ProcessResult preflight = RunHiddenProcess(
-            cdrecord,
+            retrobeam,
             preflightArguments,
             appDirectory,
             append,
@@ -1436,7 +3135,7 @@ void BurnEngine::Run(BurnRequest request) {
         if (preflight.exitCode != 0) {
             SetFailure(
                 "The selected burner or blank CD-R failed the read-only preflight. "
-                "No data was written; open Burn log for cdrecord's reason.");
+                "No data was written; open Burn log for RetroBeam's reason.");
             return;
         }
     }
@@ -1492,7 +3191,7 @@ void BurnEngine::Run(BurnRequest request) {
     const std::uintmax_t totalBytes =
         layout.firstSessionBytes + layout.secondSessionBytes;
 
-    const auto runSession = [this, &cdrecord, &temporary, &request, totalBytes](
+    const auto runSession = [this, &retrobeam, &temporary, &request, totalBytes](
                                 const int sessionNumber,
                                 const bool audioSession,
                                 const std::vector<fs::path>& tracks,
@@ -1523,8 +3222,10 @@ void BurnEngine::Run(BurnRequest request) {
                 request.cdrecordDevice.begin(), request.cdrecordDevice.end()));
         arguments.emplace_back(L"-v");
         if (request.requestedSpeedX > 0) {
-            arguments.push_back(L"-speed=" + std::to_wstring(request.requestedSpeedX));
+            arguments.push_back(L"speed=" + std::to_wstring(request.requestedSpeedX));
         }
+        arguments.push_back(JoinRetroBeamDriverOptions(request));
+        AppendLog(RetroBeamAdvancedPolicyText(request));
         if (sessionNumber == 1) {
             arguments.emplace_back(audioSession ? L"-dao" : L"-tao");
             arguments.emplace_back(L"-multi");
@@ -1601,7 +3302,7 @@ void BurnEngine::Run(BurnRequest request) {
             };
 
         const ProcessResult result = RunHiddenProcess(
-            cdrecord,
+            retrobeam,
             arguments,
             temporary.path,
             [this](const std::string& text) { AppendLog(text); },

@@ -1,0 +1,66 @@
+# /* @(#)libshedit-mapvers	1.12 19/04/27 Copyright 2006-2019 J. Schilling */
+
+SCHILY_1.3 {			# Added support to manage prompt index
+global:
+	shedit_gpromptidx;	# get prompt index
+	shedit_spromptidx;	# set prompt index
+} SCHILY_1.1;
+
+SCHILY_1.2 {			# Added support to know ow many chars to read with shedit_egetc()
+global:
+	shedit_getlen;		# get length of data in buffer
+} SCHILY_1.1;
+
+SCHILY_1.1 {			# Added interface for POSIX shell "fc"
+global:
+	shedit_histrange;	# report range of history numbers
+	shedit_history;		# print history to stdout or to file
+	shedit_search_history;	# search for history numbers and patterns
+	shedit_remove_history;	# remove a single line from the history
+	shedit_read_history;	# append file content to current history
+} SCHILY_1.0;
+
+SCHILY_1.0 {
+global:
+#ifdef	__never__		/* Do not export variables, they do not allow lazy linking */
+	shedit_prompt;		# int prompt
+	shedit_delim;		# int delim
+	shedit_prompts;		# char *prompts[2] for the editor
+#endif
+
+	shedit_setprompts;	# set up prompts
+	shedit_chghistory;	# change history size
+	shedit_bhist;		# bhist() builtin for "history" command
+	shedit_bshist;		# bshist() builtin for "savehistory" command
+	shedit_append_line;	# to append a line to the history
+	shedit_treset;		# shedit_treset() reset tty modes
+
+	shedit_egetc;		# shedit_egetc() get character from edited line
+	shedit_getdelim;	# shedit_getdelim() get delimiter
+
+	shedit_getenv;		# Set up pointer to getenv() function
+	shedit_putenv;		# Set up pointer to putenv() function
+
+	shedit_igneof;		# Set up pointer to ignoreeof() function
+
+	shedit_remap;		# remap() function
+	shedit_list_map;	# list_map() function
+	shedit_add_map;		# add_map() function
+	shedit_del_map;		# del_map() function
+
+#ifdef	__never__
+	shell_error;
+	shell_fclose;
+	shell_fgetc;
+	shell_fileopen64;
+	shell_filewrite;
+	shell_fprintf;
+	shell_getc;
+	shell_printf;
+	shell_snprintf;
+	shell_sprintf;
+#endif
+
+local:
+	*;
+};

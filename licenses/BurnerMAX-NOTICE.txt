@@ -1,0 +1,20 @@
+BurnerMAX interoperability notice
+=================================
+
+Retro Burner contains an original native interoperability implementation for
+testing/enabling expanded DVD+R DL capacity on compatible optical drives.
+
+The original C4E BurnerMAX Payload Tool executable is NOT included, embedded,
+linked or executed by Retro Burner.
+
+Credit is due to C4E, Team Jungle and Team Xecuter for the original BurnerMAX
+Payload Tool/research and its public description of the realtime drive-register
+capacity payload behaviour.
+
+Retro Burner's implementation lives in:
+
+  src/burnermax.cpp
+  src/burnermax.h
+
+It uses Windows SCSI pass-through and independently verifies the resulting
+layer boundary / writable capacity before allowing an XGD3 write.

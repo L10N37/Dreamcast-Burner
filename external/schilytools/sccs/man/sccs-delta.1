@@ -1,0 +1,1007 @@
+'\" te
+.\" @(#)sccs-delta.1	1.58 20/09/18 Copyright 2007-2020 J. Schilling
+.\" Copyright (c) 1999, Sun Microsystems, Inc. All Rights Reserved
+.\" CDDL HEADER START
+.\"
+.\" The contents of this file are subject to the terms of the
+.\" Common Development and Distribution License ("CDDL"), version 1.0.
+.\" You may use this file only in accordance with the terms of version
+.\" 1.0 of the CDDL.
+.\"
+.\" A full copy of the text of the CDDL should have accompanied this
+.\" source.  A copy of the CDDL is also available via the Internet at
+.\" http://www.opensource.org/licenses/cddl1.txt
+.\"
+.\" When distributing Covered Code, include this CDDL HEADER in each
+.\" file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+.\" If applicable, add the following below this CDDL HEADER, with the
+.\" fields enclosed by brackets "[]" replaced with your own identifying
+.\" information: Portions Copyright [yyyy] [name of copyright owner]
+.\"
+.\" CDDL HEADER END
+.if t .ds a \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'a
+.if t .ds o \v'-0.55m'\h'0.00n'\z.\h'0.45n'\z.\v'0.55m'\h'-0.45n'o
+.if t .ds u \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'u
+.if t .ds A \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'A
+.if t .ds O \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'O
+.if t .ds U \v'-0.77m'\h'0.30n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.75n'U
+.if t .ds s \\(*b
+.if t .ds S SS
+.if n .ds a ae
+.if n .ds o oe
+.if n .ds u ue
+.if n .ds s sz
+.TH sccs-delta 1 "2020/09/18" "SunOS 5.11" "User Commands"
+.SH NAME
+sccs-delta, delta \- make a delta to an SCCS file
+.SH SYNOPSIS
+.LP
+.nf
+.B /usr/ccs/bin/delta \c
+.RB [ -dfhknopsz "] \c
+.RB [ "-g \c
+.I sid-list \c
+| \c
+.BI -g sid-list\c
+]
+.br
+.RB "    [" "-m \c
+.I mr-list \c
+| \c
+.BI -m mr-list\c
+] \c
+.RB [ -q\c
+.RI [ nsedelim "]] \c
+.RB [ "-r \c
+.I sid \c
+| \c
+.BI  -r sid\c
+]
+.br
+.RB "    [" "-y \c
+.RI [ comment "]] \c
+.RB [ "-D \c
+.IR diff-file "]
+.br
+.RB "    [" -X\c
+.IR extended-options "] "\c
+.RB [ -N\c
+.IR bulk-spec "] \c
+.IR s.filename ...
+.fi
+
+.SH DESCRIPTION
+
+.LP
+The
+.B delta
+utility checks in a record of the line-by-line differences made to a
+checked-out version of a file under
+.B SCCS
+control. These changes are taken from the writable working copy that
+was retrieved using the
+.B SCCS get
+command (see 
+.BR sccs-get (1)).
+This working copy does not have the
+.RB ` s. '
+prefix, and is also referred to as a
+.BR g -file.
+
+.LP
+If a directory name is used in place of the
+.I s.filename
+argument, the
+.B delta
+command applies to all
+.BR s. files
+in that directory. Unreadable
+.BR s. files
+produce an error; processing continues with the next file (if any). The use of
+.RB ` \(mi '
+as the
+.I s.filename
+argument indicates that the names of files are to be read from the
+standard input, one
+.BR s. file
+per line (requires
+.BR -y ,
+and in some cases,
+.BR -m ).
+
+.LP
+.B delta
+may issue prompts on the standard output depending upon the options specified
+and the flags that are set in the
+.BR s. file
+(see 
+.BR sccs-admin (1),
+and the
+.B -m
+and
+.B -y
+options below, for details).
+
+.SH OPTIONS
+
+.LP
+The following options are supported:
+
+.br
+.ne 3
+.TP 13
+.B \-b
+Use command 
+.BR bdiff (1)
+instead of 
+.BR fsdiff (1).
+This version of
+.BR delta (1)
+by default uses 
+.BR fsdiff (1)
+that is faster than
+.BR bdiff (1)
+and does not slow down as much with larger file size.
+
+.br
+.ne 3
+.TP
+.B -d
+Use command 
+.BR diff (1)
+instead of 
+.BR bdiff (1).
+Returns exit status
+.B 2
+instead of
+.B 1
+if the
+.BI s. filename
+argument is not specified.
+
+.br
+.ne 3
+.TP
+.B -f
+In NSE mode, this option allows to enforce a delta even when no
+.BI p. file
+exists.
+The new SID is assigned using the same rules as with
+.BR "get -e" .
+.sp
+This option is usually used together with the
+.B \-q
+and
+.B \-n
+options.
+.sp
+This option is an undocumented
+.B \s-1SUN\s+1
+extension that does not exist in historic
+.B sccs 
+implementations.
+
+.br
+.ne 3
+.TP
+.B -h
+In NSE mode, this option allows to use
+.BR diffh (1)
+for large files.
+.sp
+This option is currently defunct.
+.sp
+This option is an undocumented
+.B \s-1SUN\s+1
+extension that does not exist in historic
+.B sccs 
+implementations.
+
+.br
+.ne 3
+.TP
+.B -k
+Suppresses expansion of
+.B ID
+keywords when
+.BR delta (1)
+is doing an implicit
+.BR get (1)
+operation because
+.BI  -N+ ...
+was specified.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.br
+.ne 3
+.TP
+.B -n
+Retain the edited
+.BR g -file,
+which is normally removed at the completion of processing.
+
+.br
+.ne 4
+.TP
+.B -p
+Display line-by-line differences (in 
+.BR diff (1)
+format) on the standard output.
+
+.br
+.ne 3
+.TP
+.BI -q\fR[ nsedelim\fR]
+Enable
+.B NSE
+mode.
+If
+.B NSE
+mode is enabled, several
+.B NSE
+related extensions may be used.
+In this release, the value of
+.I nsedelim
+is ignored.
+.sp
+In NSE mode,
+.B delta
+behaves as if the
+.B \-o
+option was specified and never issues a warning about missing
+.BR "id keyword" s.
+.sp
+This option is an undocumented
+.B \s-1SUN\s+1
+extension that does not exist in historic
+.B sccs 
+implementations.
+
+.br
+.ne 3
+.TP
+.B -s
+Silent.  Do not display warning or confirmation messages.  Do not
+suppress error messages (which are written to standard error).
+
+.br
+.ne 3
+.TP
+\fB-g \fIsid-list\fR | \fB-g\fIsid-list\fR
+Specify a list of deltas to omit when the file is accessed at the
+.B SCCS
+version
+.B ID
+.RB ( SID )
+created by this delta.
+This causes the file to be checked out later to differ
+from the checked in file unless
+.RB ` "get -i\c
+.IR sid-list '
+with the same
+.I sid-list
+is specified during checkout.
+.I sid-list
+is a comma-separated list of
+.IR SID s.
+To specify a range of deltas, use a
+.RB ` \(mi '
+separator instead of a comma, between two
+.BR SID s
+in the list.
+
+.br
+.ne 3
+.TP
+\fB-m \fImr-list\fR | \fB-m\fImr-list\fR
+If the SCCS file has the
+.B v
+flag set (see 
+.BR sccs-admin (1)),
+you must supply one or more Modification Request (MR) numbers for the
+new delta. When specifying more than one MR number on the command line,
+.I mr-list
+takes the form of a quoted, space-separated list. If
+.B \-m
+is not used and the standard input is a terminal,
+.B delta
+prompts with
+.RB ` MRs? " '
+for the list (before issuing the
+.RB ` comments? " '
+prompt). If the
+.B v
+flag in the
+.BR s. file
+has a value, it is taken to be the name of a program to validate the
+MR numbers. If that validation program returns a non-zero exit status,
+.B delta
+terminates without checking in the changes.
+
+.br
+.ne 3
+.TP
+.B \-o
+Use the original time of the edited file for the delta time
+when applying the delta.
+In NSE mode this is the default behavior.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.br
+.ne 3
+.TP
+\fB-r \fIsid\fR | \fB-r\fIsid\fR
+When two or more versions are checked out, specify the version to
+check in. This
+.B SID
+value can be either the
+.B SID
+specified on the
+.B get
+command line, or the
+.B SID
+of the new version to be checked in as reported by
+.BR get .
+A diagnostic results if the specified
+.B SID
+is ambiguous, or if one is required but not supplied.
+.ne 2
+.TP
+\fB-y\fR[\fIcomment\fR]
+Supply a comment for the delta table (version log). A null comment is accepted,
+and produces an empty commentary in the log. If
+.B \-y
+is not specified and the standard input is a terminal,
+.B delta
+prompts with
+.RB ` comments? " '.
+An unescaped NEWLINE terminates the comment.
+
+.br
+.ne 3
+.TP
+.B \-z
+.ne 3
+Enable CMF extensions for MR number handling.
+.sp
+This option is an undocumented
+.B \s-1SUN\s+1
+extension that does not exist in historic
+.B sccs 
+implementations.
+
+.br
+.ne 3
+.TP
+.BI \-C dir
+Specify the base directory for the
+.B g-file
+relative to the current working directory.
+By default, the
+.B g-file
+is searched for in the current directory (independent from
+the location of the 
+.BI s. file\fR.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.br
+.ne 3
+.TP
+.BI \-D diff-file
+Provide a file with prepared diff output to
+.BR delta (1).
+If this option is present,
+.BR delta (1)
+will not get the previous file content and call
+.BR diff (1)
+on the previous file content and the current file content,
+but read the
+.I diff-file
+instead.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.sp
+.ne 3
+.TP
+.BI -N bulk-spec
+Processes a bulk of SCCS history files.
+This option allows to do an efficient mass processing of SCCS history files.
+.sp
+The
+.I bulk-spec
+parameter is composed from an optional list of
+.B flag
+parameters followed by an optional
+.B path
+specifier.
+.sp
+The following flag types are supported:
+.RS
+.TP 10
+.B +
+If
+.I bulk-spec
+is preceded by a
+.BR `+' ,
+.BR delta (1)
+removes the original g-files and replaces them by file content that is
+retrieved by a
+.BR get (1)
+operation on the related
+.BI s. file\fR.
+This option is ignored if
+.B \-n
+has been specified.
+.TP
+.B space
+This is a placeholder dummy flag that allows to use a prepared string for
+the 
+.B \-N
+option and to replace the space character by one of the supported flags
+on demand.
+.LP
+The following path specifier types are supported:
+.TP 10
+.B \-N
+The file name parameters to the
+.B delta
+command are not
+.I s.filename
+files but the names of the g-files.
+The
+.I s.filename
+names are automatically derived from the g-file names by prepending
+.B s.
+to the last path name component.
+Both,
+.I s.filename
+and the g-file are in the same directory.
+.TP
+.B \-Ns.
+The file name parameters to the
+.B delta
+command are
+.I s.filename
+files.
+The the g-files names are automatically derived by removing
+.B s.
+from the beginning of last path name component of the
+.IR s.filename.
+Both,
+.I s.filename
+and the g-file are in the same directory.
+.TP
+.BI \-N dir
+The file name parameters to the
+.B delta
+command are not
+.I s.filename
+files but the names of the g-files.
+The
+.I s.filename
+names are put into directory
+.IR dir ,
+the names are automatically derived from the g-file names by prepending
+.IB dir /s.
+to the last path name component.
+.TP
+.BI \-N dir /s.
+The file name parameters to the
+.B delta
+command are
+.I s.filename
+files in directory
+.IR dir .
+The the g-files names are automatically derived by removing
+.IB dir /s.
+from the beginning of last path name component of the
+.IR s.filename.
+.PP
+A typical value for
+.I dir
+is
+.BR SCCS .
+.PP
+In order to overcome the limited number of
+.BR exec (2)
+arguments, it is recommended to use
+.RB ` \(mi \&'
+as the file name parameter for
+.BR delta (1)
+and to send a list of path names to
+.BR stdin .
+.PP
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.RE
+
+.br
+.ne 3
+.TP
+.BI \-X extended\-options
+Specify extended options. The argument
+.I extended\-options
+may be a comma separated list of extended option names.
+.sp
+The following extended options are supported, they may be abbreviated as long
+as the abbreviation is still unique:
+.sp
+.RS
+.TP
+.BI date= datetime
+Allows to overwrite the usual methods to determine the
+time stamp used for a new delta. This is needed
+to e.g. convert a historic SCCS history into a
+new project oriented bundle history.
+The format of the
+.I datetime
+argument is the same as for cutoff times but nanoseconds and
+a time zone offset are permitted in addition.
+.TP
+.BI gpath= g-path
+Specify a different path to the
+.I g-file
+instead of deriving the path from the
+.B s-file
+using an algorithm that may not apply in a specific case.
+This option is needed to manage the 
+.B changeset
+file.
+.TP
+.B nobulk
+Disables the
+.B \-N
+(bulkmode) filename translations.
+This is needed to disable a
+.B \-N
+option that is automatically added by
+.BR sccs (1)
+in NewMode and would otherwise make it impossible to deal with the
+changeset file 
+.RB  `` .sccs/SCCS/s.changeset ''.
+.TP
+.BI mail= address
+Set
+.I address
+as e-mail address in the delta table for the
+.I SID
+just created.
+.TP
+.B prepend
+Prepend the current content of the
+.B g-file
+to the previous content of that file.
+With this option, there is no need to unpack the old reference version
+and to diff the current version against that old version. This causes
+a major performance win that is used for updating the
+.BR sccschangeset (4)
+file when in
+.BR "project mode" .
+.TP
+.BI user= name
+Use a different user name for the
+.B programmer
+field in the delta table.
+By the default, the
+.B logname
+is used for this field.
+Using a different name may however later deny the permission
+to modify a delta by programs like
+.BR cdc (1).
+.TP
+.B 0
+When reading filenames from
+.BR stdin ,
+triggered by a file name argument
+.RB ` - ',
+the filename separator is a
+.B null byte
+instead of a
+.BR newline .
+This allows to use long lists with arbitrary filenames.
+.TP
+.B help
+Print a short online help for available options.
+.PP
+The
+.B \-X
+option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+.RE
+
+.br
+.ne 3
+.TP
+.PD 0
+.B \-V
+.TP
+.B \-version
+.TP
+.B \-\-version
+.PD
+Prints the
+.B delta
+version number string and exists.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.SH ENVIRONMENT VARIABLES
+.sp
+.LP
+See
+.BR environ (5)
+for descriptions of the following environment variables that affect the
+execution of
+.BR delta (1):
+.BR LANG ,
+.BR LC_ALL ,
+.BR LC_COLLATE ,
+.BR LC_CTYPE ,
+.BR LC_MESSAGES ,
+and
+.BR NLSPATH .
+
+.br
+.ne 4
+.TP
+.B SCCS_NO_HELP
+If set,
+.BR delta (1)
+will not automatically call
+.BR help (1)
+with the SCCS error code in order to print a more helpful
+error message. Scripts that depend on the exact error messages
+of SCCS commands should set the environment variable
+.B SCCS_NO_HELP
+and set
+.BR LC_ALL=C .
+
+.br
+.ne 6
+.SH STDOUT
+.sp
+.LP
+If the
+.B \-s
+option was not specified,
+.B delta
+prints statistics about file activities in the following format:
+.sp
+.RS
+.I new-sid
+.br
+.I nn
+inserted
+.br
+.I nn
+deleted
+.br
+.I nn
+unchanged
+.br
+.RE
+
+.SH EXIT STATUS
+.sp
+.LP
+The following exit values are returned:
+.sp
+.ne 2
+.TP 5
+.B 0
+Successful completion.
+.sp
+.ne 2
+.TP
+.B 1
+An error occurred and the
+.B \-d
+option had not been specified.
+.sp
+.ne 2
+.TP
+.B 2
+An error occurred, the
+.B \-d
+option had been specified, and the
+.I s.filename
+argument was not specified.
+
+.SH FILES
+
+.br
+.ne 2
+.TP 12
+.BI d. file
+temporary file created by the
+.BR delta (1)
+program with the content of the previous version, 
+used to compute differences to the current version
+
+.br
+.ne 2
+.TP 12
+.BI e. file
+temporary file to hold an uuencoded version of the
+.B g-file
+in case of an encoded history file
+
+.br
+.ne 2
+.TP
+.BI p. file
+permission (lock) file for checked-out versions.
+See
+.BR sccs-get (1)
+for a description of the layout of the
+.BR p. file.
+
+.br
+.ne 2
+.TP
+.BI q. file
+temporary copy of the
+.BR p. file;
+renamed to the
+.BR p. file
+after completion
+
+.br
+.ne 2
+.TP
+.BI s. file
+.B SCCS
+history file, see
+.BR sccsfile (4).
+
+.br
+.ne 2
+.TP
+.BI x. file
+temporary copy of the 
+.BR s. file; 
+renamed to the 
+.BR s. file 
+after completion 
+
+.br
+.ne 2
+.TP
+.BI z. file
+temporary lock file contains the binary process id in host byte order
+followed by the host name
+
+.br
+.ne 3
+.TP
+.B dump.core
+If the file
+.B dump.core
+exists in the current directory and a fatal signal is received, a coredump
+is initiated via
+.BR abort (3).
+
+.SH ATTRIBUTES
+
+.LP
+See 
+.BR attributes (5)
+for descriptions of the following attributes:
+.sp
+
+.SS /usr/ccs/bin/delta
+
+.LP
+
+.sp
+.TS
+tab() box;
+cw(2.75i) |cw(2.75i) 
+lw(2.75i) |lw(2.75i) 
+.
+ATTRIBUTE TYPEATTRIBUTE VALUE
+_
+AvailabilitySUNWsprot
+.TE
+
+.SH SEE ALSO
+.nh
+.LP
+.BR sccs (1),
+.BR sccs\-add (1),
+.BR sccs\-admin (1),
+.BR sccs\-branch (1),
+.BR sccs\-cdc (1),
+.BR sccs\-check (1),
+.BR sccs\-clean (1),
+.BR sccs\-comb (1),
+.BR sccs\-commit (1),
+.BR sccs\-create (1),
+.BR sccs\-cvt (1),
+.BR sccs\-deledit (1),
+.BR sccs\-delget (1),
+.BR sccs\-diffs (1),
+.BR sccs\-edit (1),
+.BR sccs\-editor (1),
+.BR sccs\-enter (1),
+.BR sccs\-fix (1),
+.BR sccs\-get (1),
+.BR sccs\-help (1),
+.BR sccs\-histfile (1),
+.BR sccs\-info (1),
+.BR sccs\-init (1),
+.BR sccs\-istext (1),
+.BR sccs\-ldiffs (1),
+.BR sccs\-log (1),
+.BR sccs\-print (1),
+.BR sccs\-prs (1),
+.BR sccs\-prt (1),
+.BR sccs\-rcs2sccs (1),
+.BR sccs\-remove (1),
+.BR sccs\-rename (1),
+.BR sccs\-rmdel (1),
+.BR sccs\-root (1),
+.BR sccs\-sact (1),
+.BR sccs\-sccsdiff (1),
+.BR sccs\-status (1),
+.BR sccs\-tell (1),
+.BR sccs\-unedit (1),
+.BR sccs\-unget (1),
+.BR sccs\-val (1),
+.BR bdiff (1), 
+.BR diff (1), 
+.BR fsdiff (1), 
+.BR what (1),
+.BR sccschangeset (4),
+.BR sccsfile (4),
+.BR attributes (5),
+.BR environ (5),
+.BR standards (5).
+.hy 14
+
+.SH DIAGNOSTICS
+
+.LP
+Use the
+.B SCCS help
+command for explanations (see 
+.BR sccs-help (1)).
+
+.SH WARNINGS
+
+.LP
+Lines beginning with an
+.B ASCII SOH
+character (binary 001) cannot be placed in the
+.B SCCS
+file if the 
+.B SCCS 
+v4 history file format is used, unless the
+.B SOH
+is escaped. This character has special meaning to
+.B SCCS
+(see 
+.BR sccsfile (4))
+and produces an error in
+.B SCCS
+v4 mode.
+.B SCCS
+v6 automatically escapes such characters and thus allows
+to use
+.B ASCII SOH
+at any place in a file.
+.LP
+If 
+.BR delta (1)
+is used in force mode (using
+.RB ` "delta -q -f -n s.\fIfile" '),
+using the option 
+.BI -g sid-list
+in addition will result in unexpected behavior.
+This is because the
+.I file
+content used for
+.BR delta (1),
+differs from what is extracted using
+.BR get (1).
+As in force delta mode,
+.BR get (1)
+is usually not used, the next delta will revert the effect of the
+.RB ` "delta -g..." '
+call.
+
+.SH BUGS
+None
+
+.SH AUTHORS
+The
+.B SCCS
+suite was originally written by Marc J. Rochkind at Bell Labs in 1972.
+Release 4.0 of
+.BR SCCS ,
+introducing new versions of the programs
+.BR admin (1),
+.BR get (1),
+.BR prt (1),
+and
+.BR delta (1)
+was published on February 18, 1977; it introduced the new text based
+.B SCCS\ v4
+history file format (previous
+.B SCCS
+releases used a binary history file format).
+The
+.B SCCS
+suite
+was later maintained by various people at AT&T and Sun Microsystems.
+Since 2006, the
+.B SCCS
+suite is maintained by J\*org Schilling.
+
+.br
+.ne 7
+.SH "SOURCE DOWNLOAD"
+A frequently updated source code for the
+.B SCCS
+suite is included in the
+.B schilytools
+project and may be retrieved from the
+.B schilytools
+project at Sourceforge at:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/
+.LP
+The download directory is:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/files/
+.LP
+Check for the
+.B schily\-*.tar.bz2
+archives.
+.LP
+Less frequently updated source code for the
+.B SCCS
+suite is at:
+.LP
+.B
+    http://sourceforge.net/projects/sccs/files/
+.LP
+Separate project informations for the
+.B SCCS
+project may be retrieved from:
+.LP
+.B
+    http://sccs.sf.net
+.br

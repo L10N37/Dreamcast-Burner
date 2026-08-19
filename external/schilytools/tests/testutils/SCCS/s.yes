@@ -1,0 +1,28 @@
+hV6,sum=18549
+s 00013/00000/00000
+d D 1.1 2011/05/27 20:17:18+0200 joerg 1 0
+S s 06285
+c date and time created 11/05/27 20:17:18 by joerg
+e
+u
+U
+f e 0
+G r 0e472435a8ed3
+G p tests/testutils/yes
+t
+T
+I 1
+#!/bin/sh
+
+if test $# -lt 1
+then
+arg="y"
+else
+arg="$1"
+fi
+
+while echo "$arg"
+do
+	:
+done
+E 1

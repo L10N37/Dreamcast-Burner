@@ -95,21 +95,21 @@ public:
         }
 
         paths_.cdirip = paths_.directory / L"cdirip.exe";
-        paths_.cdrecord = paths_.directory / L"cdrecord.exe";
-        paths_.cygwin = paths_.directory / L"cygwin1.dll";
+        paths_.retrobeam = paths_.directory / L"retrobeam.exe";
         paths_.growisofs = paths_.directory / L"growisofs.exe";
         paths_.dvdMediaInfo = paths_.directory / L"dvd+rw-mediainfo.exe";
+        paths_.abgx360 = paths_.directory / L"abgx360.exe";
 
         if (!WriteResourceToFile(
                 IDR_BIN_CDIRIP, paths_.cdirip, paths_.error) ||
             !WriteResourceToFile(
-                IDR_BIN_CDRECORD, paths_.cdrecord, paths_.error) ||
-            !WriteResourceToFile(
-                IDR_BIN_CYGWIN, paths_.cygwin, paths_.error) ||
+                IDR_BIN_RETROBEAM, paths_.retrobeam, paths_.error) ||
             !WriteResourceToFile(
                 IDR_BIN_GROWISOFS, paths_.growisofs, paths_.error) ||
             !WriteResourceToFile(
-                IDR_BIN_DVD_MEDIAINFO, paths_.dvdMediaInfo, paths_.error)) {
+                IDR_BIN_DVD_MEDIAINFO, paths_.dvdMediaInfo, paths_.error) ||
+            !WriteResourceToFile(
+                IDR_BIN_ABGX360, paths_.abgx360, paths_.error)) {
             std::error_code cleanupError;
             fs::remove_all(paths_.directory, cleanupError);
             return;

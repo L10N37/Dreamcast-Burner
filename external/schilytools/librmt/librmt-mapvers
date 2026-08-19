@@ -1,0 +1,29 @@
+# /* @(#)librmt-mapvers        1.3 18/06/09 Copyright 2005-2018 J. Schilling */
+
+SCHILY_1.1 {
+global:
+	rmtrmt;
+	rmtrsh;
+} SCHILY_1.0;
+
+SCHILY_1.0 {
+global:
+	_mtg2rmtg;
+	_rmtg2mtg;
+	rmtclose;
+	rmtdebug;
+	rmtfilename;
+	rmtgetconn;
+	rmthostname;
+	rmtinit;
+	rmtioctl;
+	rmtopen;
+	rmtread;
+	rmtseek;
+	rmtstatus;
+	rmtwrite;
+	rmtxstatus;
+
+local:
+	*;
+};

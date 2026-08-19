@@ -1,0 +1,16 @@
+#ident @(#)Makefile.dot	1.2 19/10/01 
+###########################################################################
+# Sample makefile for installing non-localized auxiliary files
+###########################################################################
+SRCROOT=	..
+RULESDIR=	RULES
+include		$(SRCROOT)/$(RULESDIR)/rules.top
+###########################################################################
+
+INSDIR=		share/doc/bsh
+TARGET=		dotfiles.tar.bz2
+#XMK_FILE=	Makefile.man
+
+###########################################################################
+include		$(SRCROOT)/$(RULESDIR)/rules.aux
+###########################################################################

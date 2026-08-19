@@ -516,6 +516,33 @@ void QueryBlankMedia(const HANDLE handle, OpticalDrive& drive) {
     drive.blankMedia = (output[2] & 0x03U) == 0;
 }
 
+void QueryBufferCapacity(const HANDLE handle, OpticalDrive& drive) {
+    std::array<std::uint8_t, 12> output{};
+    std::array<std::uint8_t, 10> cdb{};
+    cdb[0] = 0x5C; // READ BUFFER CAPACITY
+    cdb[7] = 0;
+    cdb[8] = static_cast<std::uint8_t>(output.size());
+
+    if (!SendScsiDataIn(
+            handle,
+            cdb.data(),
+            cdb.size(),
+            output.data(),
+            output.size())) {
+        return;
+    }
+
+    const std::uint32_t capacity = ReadBigEndian32(output.data() + 4);
+    const std::uint32_t available = ReadBigEndian32(output.data() + 8);
+    if (capacity == 0) {
+        return;
+    }
+
+    drive.driveBufferCapacityKnown = true;
+    drive.driveBufferCapacityBytes = capacity;
+    drive.driveBufferAvailableBytes = std::min(available, capacity);
+}
+
 void QueryMediaAndWriteSpeeds(const HANDLE handle, OpticalDrive& drive) {
     DWORD bytesReturned = 0;
     DWORD changeCount = 0;
@@ -537,6 +564,7 @@ void QueryMediaAndWriteSpeeds(const HANDLE handle, OpticalDrive& drive) {
     const bool windowsSpeeds = QueryWindowsWriteSpeeds(handle, drive);
     const bool rawSpeeds = QueryRawWriteSpeeds(handle, drive);
     const bool modeSpeeds = QueryModePageCapabilities(handle, drive);
+    QueryBufferCapacity(handle, drive);
 
     std::sort(
         drive.writeSpeeds.begin(),
@@ -648,8 +676,11 @@ void QueryCdrecordAddress(const HANDLE handle, OpticalDrive& drive) {
 
         const auto* adapter =
             reinterpret_cast<const SCSI_ADAPTER_BUS_INFO*>(inquiry.data());
-        for (unsigned path = 0; path < adapter->NumberOfBuses; ++path) {
-            keys.push_back(static_cast<std::uint16_t>((port << 8U) | path));
+        for (unsigned busPath = 0;
+             busPath < adapter->NumberOfBuses;
+             ++busPath) {
+            keys.push_back(
+                static_cast<std::uint16_t>((port << 8U) | busPath));
         }
     }
     return keys;
@@ -756,7 +787,7 @@ struct CdrecordScanEntry final {
     if (!tools.Ready()) {
         return entries;
     }
-    const std::filesystem::path& cdrecord = tools.cdrecord;
+    const std::filesystem::path& cdrecord = tools.retrobeam;
 
     std::string output;
     if (!RunProcessCapture(cdrecord.wstring(), L"-scanbus", output)) {
@@ -832,6 +863,102 @@ void AssignCdrecordAddresses(std::vector<OpticalDrive>& drives) {
     }
 }
 
+
+void QueryRetroBeamCapabilities(OpticalDrive& drive) {
+    drive.retrobeamCapabilitiesKnown = false;
+    drive.burnFreeSupported = false;
+    drive.forceSpeedSupported = false;
+    drive.realTimeStreamingKnown = false;
+    drive.realTimeStreamingCurrent = false;
+    drive.realTimeStreamingPersistent = false;
+    drive.streamRecordingSupported = false;
+    drive.getPerformanceWriteSpeedSupported = false;
+    drive.modePage2AWriteSpeedSupported = false;
+    drive.setCdSpeedSupported = false;
+    drive.readBufferCapacitySupported = false;
+    drive.opcDescriptorCountKnown = false;
+    drive.opcDescriptorCount = 0;
+    drive.advancedCapabilityMessage.clear();
+
+    if (drive.cdrecordDevice.empty()) {
+        drive.advancedCapabilityMessage =
+            "RetroBeam could not map this drive to a SCSI address.";
+        return;
+    }
+
+    const EmbeddedToolPaths& tools = GetEmbeddedToolPaths();
+    if (!tools.Ready() || tools.retrobeam.empty()) {
+        drive.advancedCapabilityMessage =
+            "RetroBeam capability query is unavailable.";
+        return;
+    }
+
+    const std::wstring devArg =
+        L"dev=" + std::wstring(
+            drive.cdrecordDevice.begin(),
+            drive.cdrecordDevice.end());
+
+    std::string prcap;
+    (void)RunProcessCapture(
+        tools.retrobeam.wstring(),
+        devArg + L" -prcap",
+        prcap);
+
+    // RetroBeam inherits cdrecord's driver-capability flag line. These names
+    // are emitted only when the selected driver advertises the capability.
+    drive.burnFreeSupported =
+        prcap.find("BURNFREE") != std::string::npos;
+    drive.forceSpeedSupported =
+        prcap.find("FORCESPEED") != std::string::npos;
+
+    std::string mediaInfo;
+    (void)RunProcessCapture(
+        tools.retrobeam.wstring(),
+        devArg + L" -media-info",
+        mediaInfo);
+
+    static const std::regex realtimePattern(
+        R"(\[RBMI\]\s+realtime_streaming=current:(\d+)\s+persistent:(\d+)\s+stream_recording:(\d+)\s+get_performance_wspd:(\d+)\s+mode_page_2a_wspd:(\d+)\s+set_cd_speed:(\d+)\s+read_buffer_capacity:(\d+))",
+        std::regex::icase);
+    static const std::regex opcPattern(
+        R"(\[RBMI\]\s+opc_descriptors=(\d+))",
+        std::regex::icase);
+
+    std::smatch match;
+    if (std::regex_search(mediaInfo, match, realtimePattern)) {
+        drive.realTimeStreamingKnown = true;
+        drive.realTimeStreamingCurrent = std::stoi(match[1].str()) != 0;
+        drive.realTimeStreamingPersistent = std::stoi(match[2].str()) != 0;
+        drive.streamRecordingSupported = std::stoi(match[3].str()) != 0;
+        drive.getPerformanceWriteSpeedSupported = std::stoi(match[4].str()) != 0;
+        drive.modePage2AWriteSpeedSupported = std::stoi(match[5].str()) != 0;
+        drive.setCdSpeedSupported = std::stoi(match[6].str()) != 0;
+        drive.readBufferCapacitySupported = std::stoi(match[7].str()) != 0;
+    } else if (
+        mediaInfo.find("[RBMI] realtime_streaming=unavailable") != std::string::npos ||
+        mediaInfo.find("[RBMI] realtime_streaming=not_returned") != std::string::npos ||
+        mediaInfo.find("[RBMI] realtime_streaming=short_response") != std::string::npos) {
+        drive.realTimeStreamingKnown = true;
+    }
+
+    if (std::regex_search(mediaInfo, match, opcPattern)) {
+        drive.opcDescriptorCountKnown = true;
+        drive.opcDescriptorCount = static_cast<std::uint32_t>(
+            std::stoul(match[1].str()));
+    }
+
+    drive.retrobeamCapabilitiesKnown =
+        !prcap.empty() || !mediaInfo.empty();
+
+    if (drive.retrobeamCapabilitiesKnown) {
+        drive.advancedCapabilityMessage =
+            "RetroBeam capability fingerprint loaded for this drive/media.";
+    } else {
+        drive.advancedCapabilityMessage =
+            "RetroBeam did not return a capability fingerprint.";
+    }
+}
+
 } // namespace
 
 std::string OpticalDrive::DisplayName() const {
@@ -899,5 +1026,8 @@ std::vector<OpticalDrive> EnumerateOpticalDrives() {
             return left.rootPath < right.rootPath;
         });
     AssignCdrecordAddresses(drives);
+    for (OpticalDrive& drive : drives) {
+        QueryRetroBeamCapabilities(drive);
+    }
     return drives;
 }

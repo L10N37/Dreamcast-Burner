@@ -1,0 +1,64 @@
+Date: Tue, 2 Jun 2015 09:49:00 -0700
+Subject: Re: "patch" license
+From: Larry Wall <larry@wall.org>
+To: Joerg Schilling <Joerg.Schilling@fokus.fraunhofer.de>
+
+I'm fine with that.
+
+Larry
+
+On Tue, Jun 2, 2015 at 9:27 AM, Joerg Schilling <
+Joerg.Schilling@fokus.fraunhofer.de> wrote:
+
+> Hi,
+>
+> since January 2011, I am maintaining a variant of your "patch" implementation
+> in order to have a version of patch for OpenSolaris that has a chance to pass
+> a POSIX compliance test.
+>
+> An old version is already integrated in my OpenSolaris source repository
+> at:
+>
+>
+>
+> https://sourceforge.net/p/schillix-on/schillix-on/ci/default/tree/usr/src/cmd/patch/
+>
+> and recent development versions are in the tarball of the schily tools collection
+> at:
+>
+>         https://sourceforge.net/projects/schilytools/files/
+>
+> I am interested in having a clean license agreement with you instead of the
+> original text from the 1980s.
+>
+> The license agreement you negotiated with the OpenBSD project seems to be nice.
+> Could you please send me an explicit permission to use the text from OpenBSD
+> for my patch as well:
+>
+>  * Redistribution and use in source and binary forms, with or without
+>  * modification, are permitted provided that the following condition is met:
+>  * 1. Redistributions of source code must retain the above copyright notice,
+>  * this condition and the following disclaimer.
+>  *
+>  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND ANY
+>  * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+>  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+>  * DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR
+>  * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+>  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+>  * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+>  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+>  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+>  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+>  * SUCH DAMAGE.
+>
+> I am going to honor your license decision for my enhancements as well...
+>
+> Thank you in advance
+>
+> Jörg
+>
+> --
+>  EMail:joerg@schily.net                    (home) Jörg Schilling D-13353 Berlin
+>        joerg.schilling@fokus.fraunhofer.de (work) Blog: http://schily.blogspot.com/
+>  URL:  http://cdrecord.org/private/ http://sourceforge.net/projects/schilytools/files/

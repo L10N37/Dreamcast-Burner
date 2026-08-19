@@ -164,6 +164,9 @@ struct AppState final {
     int selectedSpeed = 0; // 0 means Automatic.
     ConsoleProfile selectedConsole = ConsoleProfile::Dreamcast;
     Xbox360DiscType xbox360DiscType = Xbox360DiscType::Xgd2;
+    // RetroBeam is the default DVD backend. growisofs remains selectable.
+    bool useGrowisofsForDvd = false;
+    RetroBeamAdvancedOptions advanced;
     std::string status = "Choose a disc image and insert compatible blank media.";
     BurnStage lastBurnStage = BurnStage::Idle;
 };
@@ -689,6 +692,62 @@ void DrawDriveDetails(const OpticalDrive& drive) {
             std::lround(
                 speed.cdMultiplier)));
 }
+
+[[nodiscard]] RetroBeamAdvancedOptions EffectiveAdvancedOptions(
+    const AppState& state,
+    const OpticalDrive* drive) {
+    RetroBeamAdvancedOptions options = state.advanced;
+
+    if (drive == nullptr) {
+        options.burnFree = false;
+        options.forceSpeed = false;
+        options.useStreamingPolicy = false;
+        return options;
+    }
+
+    if (!drive->burnFreeSupported) {
+        options.burnFree = false;
+    }
+    if (!drive->forceSpeedSupported) {
+        options.forceSpeed = false;
+    }
+    if (!IsDvdProfile(state.selectedConsole) ||
+        !drive->realTimeStreamingKnown ||
+        !drive->streamRecordingSupported ||
+        (!drive->getPerformanceWriteSpeedSupported &&
+         !drive->modePage2AWriteSpeedSupported)) {
+        options.useStreamingPolicy = false;
+    }
+
+    return options;
+}
+
+[[nodiscard]] std::string FormatKiB(const std::uint32_t bytes) {
+    if (bytes >= 1024U * 1024U) {
+        char text[32]{};
+        snprintf(
+            text,
+            sizeof(text),
+            "%.1f MiB",
+            static_cast<double>(bytes) / (1024.0 * 1024.0));
+        return text;
+    }
+    return std::to_string(bytes / 1024U) + " KiB";
+}
+
+[[nodiscard]] const char* OpcPolicyDisplayName(
+    const RetroBeamOpcPolicy policy) {
+    switch (policy) {
+    case RetroBeamOpcPolicy::Force:
+        return "Force explicit OPC";
+    case RetroBeamOpcPolicy::Skip:
+        return "Skip explicit OPC";
+    case RetroBeamOpcPolicy::Automatic:
+    default:
+        return "Automatic";
+    }
+}
+
 void DrawApp(
     AppState& state,
     BurnEngine& burnEngine,
@@ -767,42 +826,72 @@ void DrawApp(
                 ImVec2(artSize, 23.0F),
                 progressLabel);
 
+            // RB_IMGBURN_STYLE_BUFFER_BARS_V84B
+            if (burn.writing && burn.ringBufferPercent >= 0) {
+                ImGui::TextDisabled("Buffer");
+                char fifoLabel[16]{};
+                snprintf(
+                    fifoLabel,
+                    sizeof(fifoLabel),
+                    "%d%%",
+                    std::clamp(burn.ringBufferPercent, 0, 100));
+                ImGui::ProgressBar(
+                    static_cast<float>(
+                        std::clamp(burn.ringBufferPercent, 0, 100)) / 100.0F,
+                    ImVec2(artSize, 15.0F),
+                    fifoLabel);
+            }
+
+            if (burn.writing && burn.driveBufferPercent >= 0) {
+                ImGui::TextDisabled("Device Buffer");
+                char deviceLabel[16]{};
+                snprintf(
+                    deviceLabel,
+                    sizeof(deviceLabel),
+                    "%d%%",
+                    std::clamp(burn.driveBufferPercent, 0, 100));
+                ImGui::ProgressBar(
+                    static_cast<float>(
+                        std::clamp(burn.driveBufferPercent, 0, 100)) / 100.0F,
+                    ImVec2(artSize, 15.0F),
+                    deviceLabel);
+            }
+
             if (burn.stage == BurnStage::Complete) {
                 DrawCenteredSuccessText(artSize);
             } else {
                 std::string burnDetails;
+            // RB_FIXED_WIDTH_BURN_SPEED_V2
+            // Reserve five columns for live optical write speed so
+            // 9.x -> 10.x/48.x never moves the following status fields.
+            const auto FixedBurnSpeed =
+                [](const std::string& speed) {
+                    if (speed.size() >= 5) {
+                        return speed;
+                    }
+                    return std::string(
+                               5 - speed.size(),
+                               ' ') +
+                           speed;
+                };
                 if (burn.writing) {
                     if (IsDvdProfile(state.selectedConsole)) {
+                        // RB_COMPACT_DVD_BURN_STATUS_V84L
+                        // Buffer health already has dedicated graphical bars.
+                        // Keep the compact text row to the two values that are
+                        // not otherwise obvious at a glance.
                         if (!burn.actualSpeed.empty()) {
-                            burnDetails = burn.actualSpeed;
+                            burnDetails =
+                                "Speed " +
+                                FixedBurnSpeed(burn.actualSpeed);
                         }
                         if (!burn.remainingTime.empty()) {
                             if (!burnDetails.empty()) {
                                 burnDetails += "  |  ";
                             }
                             burnDetails +=
-                                "remaining " +
+                                "Remaining " +
                                 burn.remainingTime;
-                        }
-                        if (burn.ringBufferPercent >= 0) {
-                            if (!burnDetails.empty()) {
-                                burnDetails += "  |  ";
-                            }
-                            burnDetails +=
-                                "Read Buffer " +
-                                std::to_string(
-                                    burn.ringBufferPercent) +
-                                "%";
-                        }
-                        if (burn.driveBufferPercent >= 0) {
-                            if (!burnDetails.empty()) {
-                                burnDetails += "  |  ";
-                            }
-                            burnDetails +=
-                                "Drive Buffer " +
-                                std::to_string(
-                                    burn.driveBufferPercent) +
-                                "%";
                         }
                     } else if (state.selectedConsole ==
                                ConsoleProfile::Dreamcast) {
@@ -813,25 +902,71 @@ void DrawApp(
                         if (!burn.actualSpeed.empty()) {
                             burnDetails +=
                                 "  |  " +
-                                burn.actualSpeed;
+                                FixedBurnSpeed(burn.actualSpeed);
                         }
+                // RB_UNIVERSAL_BURN_METRICS
+                if (burn.ringBufferPercent >= 0) {
+                    if (!burnDetails.empty()) {
+                        burnDetails += "  |  ";
+                    }
+                    burnDetails +=
+                        "FIFO / Read Buffer " +
+                        (std::string(
+    burn.ringBufferPercent < 10
+        ? "  "
+        : (burn.ringBufferPercent < 100 ? " " : "")) +
+ std::to_string(burn.ringBufferPercent)) +
+                        "%";
+                }
+
+                if (burn.driveBufferPercent >= 0) {
+                    if (!burnDetails.empty()) {
+                        burnDetails += "  |  ";
+                    }
+                    burnDetails +=
+                        "Drive Buffer " +
+                        (std::string(
+    burn.driveBufferPercent < 10
+        ? "  "
+        : (burn.driveBufferPercent < 100 ? " " : "")) +
+ std::to_string(burn.driveBufferPercent)) +
+                        "%";
+                } else if (burn.bufferPercent >= 0) {
+                    if (!burnDetails.empty()) {
+                        burnDetails += "  |  ";
+                    }
+                    burnDetails +=
+                        "Buffer " +
+                        (std::string(
+    burn.bufferPercent < 10
+        ? "  "
+        : (burn.bufferPercent < 100 ? " " : "")) +
+ std::to_string(burn.bufferPercent)) +
+                        "%";
+                }
                         if (burn.bufferPercent >= 0) {
                             burnDetails +=
                                 "  |  buffer " +
-                                std::to_string(
-                                    burn.bufferPercent) +
+                                (std::string(
+    burn.bufferPercent < 10
+        ? "  "
+        : (burn.bufferPercent < 100 ? " " : "")) +
+ std::to_string(burn.bufferPercent)) +
                                 "%";
                         }
                     } else {
-                        burnDetails = burn.actualSpeed;
+                        burnDetails = FixedBurnSpeed(burn.actualSpeed);
                         if (burn.bufferPercent >= 0) {
                             if (!burnDetails.empty()) {
                                 burnDetails += "  |  ";
                             }
                             burnDetails +=
                                 "buffer " +
-                                std::to_string(
-                                    burn.bufferPercent) +
+                                (std::string(
+    burn.bufferPercent < 10
+        ? "  "
+        : (burn.bufferPercent < 100 ? " " : "")) +
+ std::to_string(burn.bufferPercent)) +
                                 "%";
                         }
                     }
@@ -913,7 +1048,7 @@ void DrawApp(
                         burnEngine.Reset();
                         state.status =
                             type == Xbox360DiscType::Xgd3
-                                ? "XGD3 selected. Requires a BurnerMAX-compatible DVD+R DL writer/firmware."
+                                ? "XGD3 selected. ABGX360 AutoFix Level 3 and verified BurnerMAX capacity are required before writing."
                                 : "XGD2 selected. Use blank DVD+R DL media.";
                     }
                     if (selected) {
@@ -927,7 +1062,7 @@ void DrawApp(
             if (state.xbox360DiscType == Xbox360DiscType::Xgd3) {
                 ImGui::TextColored(
                     ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
-                    "XGD3 requires BurnerMAX-compatible hardware/firmware; a standard DVD+R DL writer is not enough.");
+                    "XGD3 prerequisite: ABGX360 AutoFix Level 3 runs on a temporary ISO copy, then BurnerMAX expanded DVD+R DL capacity is verified.");
             }
         }
 
@@ -999,6 +1134,67 @@ void DrawApp(
         }
 
         ImGui::Spacing();
+
+        // RB_RECORDING_BACKEND_SELECTOR_V84H
+        //
+        // Keep backend selection visible as a first-class part of Retro Burner.
+        // The project intentionally integrates multiple open-source recording
+        // engines and more may be added later. Availability is profile-aware,
+        // but the selector itself must not disappear.
+        ImGui::TextDisabled("RECORDING BACKEND");
+
+        const bool dvdBackendProfile =
+            IsDvdProfile(state.selectedConsole);
+
+        const bool growisofsEffective =
+            dvdBackendProfile &&
+            state.useGrowisofsForDvd;
+
+        const char* backendPreview =
+            growisofsEffective
+                ? "growisofs"
+                : "RetroBeam (default)";
+
+        ImGui::BeginDisabled(burn.busy);
+        ImGui::SetNextItemWidth(-1.0F);
+
+        if (ImGui::BeginCombo(
+                "##RecordingBackend",
+                backendPreview)) {
+            if (ImGui::Selectable(
+                    "RetroBeam (default)",
+                    !growisofsEffective)) {
+                state.useGrowisofsForDvd = false;
+            }
+
+            ImGui::BeginDisabled(!dvdBackendProfile);
+            if (ImGui::Selectable(
+                    dvdBackendProfile
+                        ? "growisofs"
+                        : "growisofs (DVD profiles only)",
+                    growisofsEffective)) {
+                state.useGrowisofsForDvd = true;
+            }
+            ImGui::EndDisabled();
+
+            ImGui::EndCombo();
+        }
+
+        ImGui::EndDisabled();
+
+        if (!dvdBackendProfile) {
+            ImGui::TextDisabled(
+                "Current CD profile uses RetroBeam; growisofs becomes "
+                "selectable for PS2 DVD and Xbox 360.");
+        } else if (state.useGrowisofsForDvd) {
+            ImGui::TextDisabled(
+                "growisofs selected; console DVD writes are explicitly DAO.");
+        } else {
+            ImGui::TextDisabled(
+                "RetroBeam selected (default); Advanced Settings apply to it.");
+        }
+
+        ImGui::Spacing();
         ImGui::TextDisabled("WRITE SPEED");
         const bool dvdSpeedMode =
             IsDvdProfile(state.selectedConsole);
@@ -1027,7 +1223,7 @@ void DrawApp(
                 "##WriteSpeed",
                 speedPreview.c_str())) {
             if (ImGui::Selectable(
-                    "Automatic (recommended)",
+                    "Automatic",
                     state.selectedSpeed == 0)) {
                 state.selectedSpeed = 0;
             }
@@ -1070,6 +1266,207 @@ void DrawApp(
         } else {
             ImGui::TextDisabled(
                 "Connect a USB or internal CD/DVD writer, then press Refresh.");
+        }
+
+        ImGui::Spacing();
+                // RB_ADVANCED_SETTINGS_EXPLICIT_STATE_V84I
+        // Advanced means opt-in: always begin a fresh RetroBurner process
+        // collapsed, then preserve the user's open/closed choice normally
+        // for the rest of that process.
+        static bool advancedSettingsOpen = false;
+        ImGui::SetNextItemOpen(
+            advancedSettingsOpen,
+            ImGuiCond_Always);
+
+        const bool advancedSettingsVisible =
+            ImGui::CollapsingHeader("ADVANCED SETTINGS");
+
+        advancedSettingsOpen = advancedSettingsVisible;
+
+        if (advancedSettingsVisible) {
+            if (drive == nullptr) {
+                ImGui::TextDisabled(
+                    "Select an optical writer to load RetroBeam capabilities.");
+            } else {
+                const bool growisofsDvdSelected =
+                    IsDvdProfile(state.selectedConsole) &&
+                    state.useGrowisofsForDvd;
+
+                if (growisofsDvdSelected) {
+                    ImGui::TextDisabled(
+                        "RetroBeam Advanced Settings are not applied while growisofs is selected.");
+                }
+
+                ImGui::BeginDisabled(growisofsDvdSelected);
+
+                ImGui::TextDisabled(
+                    "%s",
+                    drive->advancedCapabilityMessage.empty()
+                        ? "Capability fingerprint not available."
+                        : drive->advancedCapabilityMessage.c_str());
+
+                ImGui::BeginDisabled(burn.busy);
+                if (ImGui::SmallButton("Reset advanced defaults")) {
+                    state.advanced = RetroBeamAdvancedOptions{};
+                }
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::TextDisabled("default: BURN-Free off, explicit OPC skipped");
+
+                ImGui::BeginDisabled(burn.busy || !drive->burnFreeSupported);
+                ImGui::Checkbox(
+                    "BURN-Free",
+                    &state.advanced.burnFree);
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::TextDisabled(
+                    drive->burnFreeSupported
+                        ? "detected by current capability probe"
+                        : "not detected by current capability probe");
+
+                if (state.advanced.burnFree) {
+                    ImGui::TextColored(
+                        ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
+                        "Warning: BURN-Free allows underrun recovery/linking. "
+                        "RetroBurner's default is continuous write.");
+                }
+
+                ImGui::BeginDisabled(burn.busy || !drive->forceSpeedSupported);
+                ImGui::Checkbox(
+                    "Force speed",
+                    &state.advanced.forceSpeed);
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                ImGui::TextDisabled(
+                    drive->forceSpeedSupported
+                        ? "available"
+                        : "not advertised");
+
+                if (IsDvdProfile(state.selectedConsole)) {
+                    ImGui::Separator();
+                    ImGui::TextDisabled("OPC POLICY");
+                const char* opcPreview =
+                    state.advanced.opcPolicy == RetroBeamOpcPolicy::Force
+                        ? "Force explicit OPC"
+                        : (state.advanced.opcPolicy == RetroBeamOpcPolicy::Skip
+                            ? "Skip explicit OPC (default / recommended)"
+                            : "Automatic");
+                ImGui::BeginDisabled(burn.busy);
+                ImGui::SetNextItemWidth(-1.0F);
+                if (ImGui::BeginCombo("##OpcPolicy", opcPreview)) {
+                    if (ImGui::Selectable(
+                            "Automatic",
+                            state.advanced.opcPolicy == RetroBeamOpcPolicy::Automatic)) {
+                        state.advanced.opcPolicy = RetroBeamOpcPolicy::Automatic;
+                    }
+                    if (ImGui::Selectable(
+                            "Force explicit OPC",
+                            state.advanced.opcPolicy == RetroBeamOpcPolicy::Force)) {
+                        state.advanced.opcPolicy = RetroBeamOpcPolicy::Force;
+                    }
+                    if (ImGui::Selectable(
+                            "Skip explicit OPC (default / recommended)",
+                            state.advanced.opcPolicy == RetroBeamOpcPolicy::Skip)) {
+                        state.advanced.opcPolicy = RetroBeamOpcPolicy::Skip;
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::EndDisabled();
+
+                if (drive->opcDescriptorCountKnown) {
+                    ImGui::TextDisabled(
+                        "OPC descriptors currently recorded: %u",
+                        drive->opcDescriptorCount);
+                } else {
+                    ImGui::TextDisabled(
+                        "OPC descriptor count: unavailable for current media.");
+                }
+
+                    ImGui::Separator();
+                    ImGui::TextDisabled("MMC STREAMING / SPEED CONTROL");
+
+                    const bool streamPolicyAvailable =
+                        drive->realTimeStreamingKnown &&
+                        drive->streamRecordingSupported &&
+                        (drive->getPerformanceWriteSpeedSupported ||
+                         drive->modePage2AWriteSpeedSupported);
+
+                    ImGui::BeginDisabled(
+                        burn.busy || !streamPolicyAvailable);
+                    ImGui::Checkbox(
+                        "Use explicit SET STREAMING policy",
+                        &state.advanced.useStreamingPolicy);
+                    ImGui::EndDisabled();
+
+                    ImGui::TextDisabled(
+                        "SET STREAMING: %s  |  SET CD SPEED: %s",
+                        streamPolicyAvailable ? "available" : "not available",
+                        drive->setCdSpeedSupported ? "available" : "not reported");
+
+                    if (drive->realTimeStreamingKnown) {
+                        ImGui::TextDisabled(
+                            "Realtime streaming state: current=%s, persistent=%s",
+                            drive->realTimeStreamingCurrent ? "on" : "off",
+                            drive->realTimeStreamingPersistent ? "on" : "off");
+                    }
+                    ImGui::TextDisabled(
+                        "Write-speed descriptors: GET PERFORMANCE=%s, Mode Page 2Ah=%s",
+                        drive->getPerformanceWriteSpeedSupported ? "yes" : "no",
+                        drive->modePage2AWriteSpeedSupported ? "yes" : "no");
+
+                    if (state.advanced.useStreamingPolicy && streamPolicyAvailable) {
+                        ImGui::Indent();
+                        const char* rotationPreview =
+                            state.advanced.streamRotation == RetroBeamStreamRotation::Cav
+                                ? "CAV"
+                                : "Drive/media default";
+                        ImGui::BeginDisabled(burn.busy);
+                        ImGui::SetNextItemWidth(-1.0F);
+                        if (ImGui::BeginCombo("Rotation##Streaming", rotationPreview)) {
+                            if (ImGui::Selectable(
+                                    "Drive/media default",
+                                    state.advanced.streamRotation == RetroBeamStreamRotation::Default)) {
+                                state.advanced.streamRotation = RetroBeamStreamRotation::Default;
+                            }
+                            if (ImGui::Selectable(
+                                    "CAV",
+                                    state.advanced.streamRotation == RetroBeamStreamRotation::Cav)) {
+                                state.advanced.streamRotation = RetroBeamStreamRotation::Cav;
+                            }
+                            ImGui::EndCombo();
+                        }
+                        ImGui::Checkbox(
+                            "Require exact selected streaming speed",
+                            &state.advanced.streamExact);
+                        ImGui::Checkbox(
+                            "Restore streaming defaults after burn",
+                            &state.advanced.restoreStreamingDefaults);
+                        ImGui::EndDisabled();
+                        ImGui::Unindent();
+                    }
+                }
+
+                ImGui::Separator();
+                ImGui::TextDisabled("DRIVE BUFFER");
+                if (drive->driveBufferCapacityKnown) {
+                    const std::string total =
+                        FormatKiB(drive->driveBufferCapacityBytes);
+                    const std::string available =
+                        FormatKiB(drive->driveBufferAvailableBytes);
+                    ImGui::Text(
+                        "%s total  |  %s currently available",
+                        total.c_str(),
+                        available.c_str());
+                } else if (drive->readBufferCapacitySupported) {
+                    ImGui::TextDisabled(
+                        "READ BUFFER CAPACITY supported; size was not returned during refresh.");
+                } else {
+                    ImGui::TextDisabled(
+                        "Drive buffer capacity not reported.");
+                }
+
+                ImGui::EndDisabled();
+            }
         }
 
         ImGui::Spacing();
@@ -1118,9 +1515,30 @@ void DrawApp(
         const bool backendReady =
             drive != nullptr &&
             (dvdProfile
-                ? (!drive->rootPath.empty() ||
-                   drive->devicePath.size() >= 6)
+                ? ((!drive->rootPath.empty() ||
+                    drive->devicePath.size() >= 6) &&
+                   (state.useGrowisofsForDvd ||
+                    !drive->cdrecordDevice.empty()))
                 : !drive->cdrecordDevice.empty());
+
+        const bool xgd3Selected =
+            xboxProfile &&
+            state.xbox360DiscType == Xbox360DiscType::Xgd3;
+
+        const bool preparedXgd3ForSelection =
+            xgd3Selected &&
+            burn.xgd3Prepared &&
+            !burn.preparedXgd3SourcePath.empty() &&
+            _wcsicmp(
+                burn.preparedXgd3SourcePath.c_str(),
+                state.selectedCdi.c_str()) == 0;
+
+        const bool canTestBurnerMax =
+            xgd3Selected &&
+            !burn.busy &&
+            drive != nullptr &&
+            drive->mediaPresent &&
+            (!drive->rootPath.empty() || drive->devicePath.size() >= 6);
 
         const bool canBurn =
             !burn.busy &&
@@ -1131,6 +1549,77 @@ void DrawApp(
             blankSupported &&
             writerSupported &&
             backendReady;
+
+        if (xgd3Selected) {
+            if (preparedXgd3ForSelection && !burn.busy) {
+                ImGui::TextColored(
+                    ImVec4(0.42F, 0.88F, 0.52F, 1.00F),
+                    "XGD3 READY: successful preflight/preparation copy is cached.");
+                ImGui::TextWrapped(
+                    "BURN XBOX 360 will reuse the ABGX360-verified working ISO. "
+                    "The ISO copy, AutoFix and verification passes will not run again. "
+                    "DVD+R DL and BurnerMAX checks are still repeated before writing.");
+            } else {
+                ImGui::TextColored(
+                    ImVec4(1.00F, 0.72F, 0.28F, 1.00F),
+                    "RECOMMENDED: run FULL XGD3 PREFLIGHT before a real burn.");
+                ImGui::TextWrapped(
+                    "If preflight passes, Retro Burner keeps that prepared working copy in a session cache so Burn can reuse it without repeating ABGX360.");
+            }
+
+            if (burn.busy && !burn.writing) {
+                ImGui::Spacing();
+                ImGui::TextDisabled("XGD3 PREPARATION");
+                ImGui::TextWrapped("%s", burn.status.c_str());
+
+                char preparationLabel[32]{};
+                snprintf(
+                    preparationLabel,
+                    sizeof(preparationLabel),
+                    "%d%%",
+                    static_cast<int>(
+                        std::lround(
+                            std::clamp(
+                                burn.progress,
+                                0.0F,
+                                1.0F) *
+                            100.0F)));
+
+                ImGui::ProgressBar(
+                    std::clamp(burn.progress, 0.0F, 1.0F),
+                    ImVec2(-1.0F, 20.0F),
+                    preparationLabel);
+                ImGui::Spacing();
+            }
+
+            ImGui::BeginDisabled(!canTestBurnerMax);
+            if (ImGui::Button(
+                    "TEST / ENABLE BURNERMAX",
+                    ImVec2(-1.0F, 38.0F))) {
+                if (drive != nullptr) {
+                    std::wstring opticalDriveRoot =
+                        drive->rootPath.size() >= 2
+                            ? drive->rootPath.substr(0, 2)
+                            : (drive->devicePath.size() >= 6
+                                ? drive->devicePath.substr(4, 2)
+                                : drive->rootPath);
+
+                    (void)burnEngine.StartBurnerMaxTest(
+                        std::move(opticalDriveRoot));
+                }
+            }
+            ImGui::EndDisabled();
+
+            if (!canTestBurnerMax && !burn.busy) {
+                ImGui::TextDisabled(
+                    "Select a drive with a DVD+R DL inserted to test BurnerMAX.");
+            } else if (!burn.busy) {
+                ImGui::TextDisabled(
+                    "No disc sectors are written. The payload is verified by layer boundary and expanded writable capacity.");
+            }
+
+            ImGui::Spacing();
+        }
 
         const char* burnButtonLabel =
             xboxProfile
@@ -1151,7 +1640,7 @@ void DrawApp(
             const char* dryRunLabel =
                 xboxProfile
                     ? (state.xbox360DiscType == Xbox360DiscType::Xgd3
-                        ? "CHECK XGD3 BURNER - DRY RUN"
+                        ? "RECOMMENDED: FULL XGD3 PREFLIGHT - NO DISC WRITE"
                         : "DRY RUN DVD+R DL - NO WRITE")
                     : "DRY RUN DVD - NO WRITE";
 
@@ -1175,6 +1664,10 @@ void DrawApp(
                                 : drive->rootPath);
                     request.requestedSpeedX =
                         SelectedSpeedX(state, drive);
+                    request.advanced =
+                        EffectiveAdvancedOptions(state, drive);
+                    request.useGrowisofsForDvd =
+                        state.useGrowisofsForDvd;
                     request.checkOnly = false;
                     request.simulate = true;
 
@@ -1184,6 +1677,17 @@ void DrawApp(
             }
 
             ImGui::EndDisabled();
+
+            if (xgd3Selected && !burn.busy) {
+                ImGui::TextDisabled(
+                    preparedXgd3ForSelection
+                        ? (state.useGrowisofsForDvd
+                            ? "Prepared ISO is cached. Re-running preflight reuses it and repeats media/BurnerMAX + growisofs dry-run checks."
+                            : "Prepared ISO is cached. Re-running preflight reuses it and repeats media/BurnerMAX + RetroBeam no-write checks.")
+                        : (state.useGrowisofsForDvd
+                            ? "Full preflight: ABGX360 AutoFix + verification, DVD+R DL/BurnerMAX checks and growisofs dry run."
+                            : "Full preflight: ABGX360 AutoFix + verification, DVD+R DL/BurnerMAX checks and RetroBeam no-write preflight."));
+            }
         }
 
         if (!canBurn && !burn.busy) {
@@ -1230,8 +1734,10 @@ void DrawApp(
             } else if (!backendReady) {
                 ImGui::TextDisabled(
                     dvdProfile
-                        ? "Could not access the selected Windows DVD writer. Press Refresh."
-                        : "Could not map this drive to cdrecord. Press Refresh and check the Burn log.");
+                        ? (state.useGrowisofsForDvd
+                            ? "Could not access the selected Windows DVD writer for growisofs. Press Refresh."
+                            : "Could not map this drive to RetroBeam. Press Refresh and check the Burn log.")
+                        : "Could not map this drive to RetroBeam. Press Refresh and check the Burn log.");
             }
         }
         ImGui::Spacing();
@@ -1252,7 +1758,7 @@ void DrawApp(
             ImGuiWindowFlags_HorizontalScrollbar);
 
         if (burn.log.empty()) {
-            ImGui::TextDisabled("CDIrip / cdrecord / growisofs output will appear here.");
+            ImGui::TextDisabled("CDIrip / RetroBeam / ABGX360 / BurnerMAX output will appear here.");
         } else {
             ImGui::TextUnformatted(burn.log.c_str());
         }
@@ -1301,6 +1807,46 @@ void DrawApp(
                            "x requested")
                               .c_str());
 
+                const RetroBeamAdvancedOptions effectiveAdvanced =
+                    EffectiveAdvancedOptions(state, drive);
+
+                if (dvdProfile) {
+                    ImGui::Text(
+                        "Backend: %s",
+                        state.useGrowisofsForDvd
+                            ? "growisofs"
+                            : "RetroBeam");
+
+                    if (state.useGrowisofsForDvd) {
+                        ImGui::Text(
+                            "growisofs: DAO | dvd-compat | selected write speed");
+                    } else {
+                        ImGui::Text(
+                            "RetroBeam: BURN-Free %s | Force speed %s",
+                            effectiveAdvanced.burnFree ? "ON" : "OFF",
+                            effectiveAdvanced.forceSpeed ? "ON" : "OFF");
+                        ImGui::Text(
+                            "OPC: %s | SET STREAMING: %s",
+                            OpcPolicyDisplayName(effectiveAdvanced.opcPolicy),
+                            effectiveAdvanced.useStreamingPolicy
+                                ? (effectiveAdvanced.streamRotation == RetroBeamStreamRotation::Cav
+                                    ? "CAV"
+                                    : "explicit/default rotation")
+                                : "automatic");
+
+                        if (effectiveAdvanced.burnFree) {
+                            ImGui::TextColored(
+                                ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
+                                "BURN-Free is ENABLED: underrun recovery/linking is allowed.");
+                        }
+                    }
+                } else {
+                    ImGui::Text(
+                        "RetroBeam: BURN-Free %s | Force speed %s",
+                        effectiveAdvanced.burnFree ? "ON" : "OFF",
+                        effectiveAdvanced.forceSpeed ? "ON" : "OFF");
+                }
+
                 if (!drive->blankMediaKnown) {
                     ImGui::TextColored(
                         ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
@@ -1319,8 +1865,12 @@ void DrawApp(
             if (xboxProfile) {
                 if (state.xbox360DiscType == Xbox360DiscType::Xgd3) {
                     ImGui::TextColored(
-                        ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
-                        "XGD3 requires a BurnerMAX-compatible writer/firmware. Retro Burner checks reported capacity before writing.");
+                        preparedXgd3ForSelection
+                            ? ImVec4(0.42F, 0.88F, 0.52F, 1.00F)
+                            : ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
+                        preparedXgd3ForSelection
+                            ? "Using the ABGX360-verified working copy from the successful preflight. ABGX360 will not repeat; BurnerMAX/media checks still run before writing."
+                            : "No prepared XGD3 copy is cached. Retro Burner will create a temporary copy, run ABGX360 AutoFix + verification, then test/enable BurnerMAX before writing.");
                 } else {
                     ImGui::TextColored(
                         ImVec4(1.00F, 0.62F, 0.24F, 1.00F),
@@ -1355,6 +1905,10 @@ void DrawApp(
                                 : drive->rootPath);
                     request.requestedSpeedX =
                         SelectedSpeedX(state, drive);
+                    request.advanced =
+                        EffectiveAdvancedOptions(state, drive);
+                    request.useGrowisofsForDvd =
+                        state.useGrowisofsForDvd;
                     request.checkOnly = false;
                     request.simulate = false;
 
@@ -1519,7 +2073,7 @@ int WINAPI wWinMain(
     windowClass.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_APP_ICON));
     windowClass.hIconSm = windowClass.hIcon;
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    windowClass.lpszClassName = L"DreamcastBurnerWindow";
+    windowClass.lpszClassName = L"RetroBurnerWindow";
     RegisterClassExW(&windowClass);
 
     RECT desiredSize{0, 0, 1120, 760};

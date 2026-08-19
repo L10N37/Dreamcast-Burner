@@ -1,0 +1,49 @@
+#ident "@(#)rules.oev	1.1 18/04/15 "
+###########################################################################
+# Written 2009-2018 by J. Schilling
+###########################################################################
+#
+# Rules for getting the original locale environment for smake and gmake
+#
+###########################################################################
+# Copyright (c) J. Schilling
+###########################################################################
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License, Version 1.0 only
+# (the "License").  You may not use this file except in compliance
+# with the License.
+#
+# See the file CDDL.Schily.txt in this distribution for details.
+# A copy of the CDDL is also available via the Internet at
+# http://www.opensource.org/licenses/cddl1.txt
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file CDDL.Schily.txt from this distribution.
+###########################################################################
+#
+# acgeneral.m4 claims that SCO Unix may have problems with setting LANG=C
+# so we are careful not to set LANG unless it was already set by someone else
+#
+###########################################################################
+
+_LANG=		$(_UNIQ)$(LANG)
+__LANG=		$(_LANG:$(_UNIQ)=NO_LANG)
+___LANG=	$(__LANG:$(_UNIQ)%=LANG)
+
+OLD_$(___LANG) :=$(LANG)
+OLD_LC_ALL := $(LC_ALL)
+OLD_LC_COLLATE := $(LC_COLLATE)
+OLD_LC_CTYPE := $(LC_CTYPE)
+OLD_LC_MESSAGES := $(LC_MESSAGES)
+OLD_LC_MONETARY := $(LC_MONETARY)
+OLD_LC_NUMERIC := $(LC_NUMERIC)
+OLD_LC_TIME := $(LC_TIME)
+
+export OLD_$(___LANG)
+export OLD_LC_ALL
+export OLD_LC_COLLATE
+export OLD_LC_CTYPE
+export OLD_LC_MESSAGES
+export OLD_LC_MONETARY
+export OLD_LC_NUMERIC
+export OLD_LC_TIME

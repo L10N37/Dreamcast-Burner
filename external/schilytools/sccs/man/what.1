@@ -1,0 +1,333 @@
+'\" te
+.\" @(#)what.1	1.18 20/08/05 Copyright 2007-2020 J. Schilling
+.\" Copyright (c) 2002, Sun Microsystems, Inc. All Rights Reserved.
+.\" Copyright 1989 AT&T
+.\" Copyright 2007-2016 J. Schilling
+.\" CDDL HEADER START
+.\"
+.\" The contents of this file are subject to the terms of the
+.\" Common Development and Distribution License ("CDDL"), version 1.0.
+.\" You may use this file only in accordance with the terms of version
+.\" 1.0 of the CDDL.
+.\"
+.\" A full copy of the text of the CDDL should have accompanied this
+.\" source.  A copy of the CDDL is also available via the Internet at
+.\" http://www.opensource.org/licenses/cddl1.txt
+.\"
+.\" When distributing Covered Code, include this CDDL HEADER in each
+.\" file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+.\" If applicable, add the following below this CDDL HEADER, with the
+.\" fields enclosed by brackets "[]" replaced with your own identifying
+.\" information: Portions Copyright [yyyy] [name of copyright owner]
+.\"
+.\" CDDL HEADER END
+.if t .ds a \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'a
+.if t .ds o \v'-0.55m'\h'0.00n'\z.\h'0.45n'\z.\v'0.55m'\h'-0.45n'o
+.if t .ds u \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'u
+.if t .ds A \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'A
+.if t .ds O \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'O
+.if t .ds U \v'-0.77m'\h'0.30n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.75n'U
+.if t .ds s \\(*b
+.if t .ds S SS
+.if n .ds a ae
+.if n .ds o oe
+.if n .ds u ue
+.if n .ds s sz
+.TH what 1 "2020/08/05" "SunOS 5.11" "User Commands"
+.SH NAME
+what \- extract SCCS version information from a file
+.SH SYNOPSIS
+.LP
+.nf
+.B what \c
+.RB [ -s "] \c
+.IR filename...
+.fi
+
+.SH DESCRIPTION
+
+.LP
+The
+.B what
+utility searches each
+.I filename
+for occurrences of the pattern
+.B @(#)
+that the
+.B SCCS get
+command (see 
+.BR sccs-get (1))
+substitutes for the
+.B %\&Z%
+ID keyword, and prints what follows up to a \fB"\fR,
+.BR > ,
+.BR NEWLINE ,
+.BR \e ,
+or
+.B NULL
+character.
+
+.SH OPTIONS
+
+.LP
+The following option is supported:
+
+.br
+.ne 3
+.TP
+.B -s
+Stops after the first occurrence of the pattern.
+
+.br
+.ne 3
+.TP
+.PD 0
+.B \-V
+.TP
+.B \-version
+.TP
+.B \-\-version
+.PD
+Prints the
+.B what
+version number string and exists.
+.sp
+This option is a
+.B \s-1SCHILY\s+1
+extension that does not exist in historic
+.B sccs
+implementations.
+
+.SH EXAMPLES
+.LP
+.B Example 1
+Extracting SCCS version information
+
+.LP
+If a C program in file
+.B program.c
+contains
+
+.LP
+.in +2
+.nf
+char sccsid[\|] = "\|@(#)identification information\|";
+.fi
+.in -2
+
+.LP
+and
+.B program.c
+is compiled to yield
+.B program.o
+and
+.BR a.out ,
+the command:
+
+.LP
+.in +2
+.nf
+example% \c
+.B what program.c program.o a.out
+.fi
+.in -2
+
+.LP
+produces:
+
+.br
+.ne 2
+.TP 12n
+.BR program.c :
+identification information
+
+.br
+.ne 2
+.TP
+.BR program.o :
+identification information
+
+.br
+.ne 2
+.TP
+.BR a.out :
+identification information
+
+.SH ENVIRONMENT VARIABLES
+
+.LP
+See 
+.BR environ (5)
+for descriptions of the following environment variables that affect the
+execution of
+.BR what :
+LANG, LC_ALL, LC_CTYPE, LC_MESSAGES, and NLSPATH.
+
+.SH EXIT STATUS
+.LP
+The following exit values are returned:
+.sp
+.br
+.ne 2
+.TP
+.B 0
+Any matches were found.
+.br
+.ne 2
+.TP
+.B 1
+No matches found.
+
+.SH ATTRIBUTES
+
+.LP
+See 
+.BR attributes (5)
+for descriptions of the following attributes:
+
+.LP
+
+.sp
+.TS
+tab() box;
+cw(2.75i) |cw(2.75i) 
+lw(2.75i) |lw(2.75i) 
+.
+ATTRIBUTE TYPEATTRIBUTE VALUE
+_
+AvailabilitySUNWsprot
+_
+Interface StabilityStandard
+.TE
+
+.SH SEE ALSO
+.nh
+.LP
+.BR sccs (1),
+.BR sccs\-add (1),
+.BR sccs\-admin (1),
+.BR sccs\-branch (1),
+.BR sccs\-cdc (1),
+.BR sccs\-check (1),
+.BR sccs\-clean (1),
+.BR sccs\-comb (1),
+.BR sccs\-commit (1),
+.BR sccs\-create (1),
+.BR sccs\-cvt (1),
+.BR sccs\-deledit (1),
+.BR sccs\-delget (1),
+.BR sccs\-delta (1),
+.BR sccs\-diffs (1),
+.BR sccs\-edit (1),
+.BR sccs\-editor (1),
+.BR sccs\-enter (1),
+.BR sccs\-fix (1),
+.BR sccs\-get (1),
+.BR sccs\-help (1),
+.BR sccs\-histfile (1),
+.BR sccs\-info (1),
+.BR sccs\-init (1),
+.BR sccs\-istext (1),
+.BR sccs\-ldiffs (1),
+.BR sccs\-log (1),
+.BR sccs\-print (1),
+.BR sccs\-prs (1),
+.BR sccs\-prt (1),
+.BR sccs\-rcs2sccs (1),
+.BR sccs\-remove (1),
+.BR sccs\-rename (1),
+.BR sccs\-rmdel (1),
+.BR sccs\-root (1),
+.BR sccs\-sact (1),
+.BR sccs\-sccsdiff (1),
+.BR sccs\-status (1),
+.BR sccs\-tell (1),
+.BR sccs\-unedit (1),
+.BR sccs\-unget (1),
+.BR sccs\-val (1),
+.BR sccschangeset (4),
+.BR sccsfile (4),
+.BR attributes (5),
+.BR environ (5),
+.BR standards (5).
+.hy 14
+
+.SH DIAGNOSTICS
+
+.LP
+Use the SCCS
+.B help
+command for explanations (see 
+.BR sccs-help (1)).
+.sp
+
+.SH BUGS
+
+.LP
+There is a remote possibility that a spurious occurrence of the
+.RB ` @(#) '
+pattern could be found by
+.BR what .
+
+.SH AUTHORS
+The
+.B SCCS
+suite was originally written by Marc J. Rochkind at Bell Labs in 1972.
+Release 4.0 of
+.BR SCCS ,
+introducing new versions of the programs
+.BR admin (1),
+.BR get (1),
+.BR prt (1),
+and
+.BR delta (1)
+was published on February 18, 1977; it introduced the new text based
+.B SCCS\ v4
+history file format (previous
+.B SCCS
+releases used a binary history file format).
+The
+.B SCCS
+suite
+was later maintained by various people at AT&T and Sun Microsystems.
+Since 2006, the
+.B SCCS
+suite is maintained by J\*org Schilling.
+
+.br
+.ne 7
+.SH "SOURCE DOWNLOAD"
+A frequently updated source code for the
+.B SCCS
+suite is included in the
+.B schilytools
+project and may be retrieved from the
+.B schilytools
+project at Sourceforge at:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/
+.LP
+The download directory is:
+.LP
+.B
+    http://sourceforge.net/projects/schilytools/files/
+.LP
+Check for the
+.B schily\-*.tar.bz2
+archives.
+.LP
+Less frequently updated source code for the
+.B SCCS
+suite is at:
+.LP
+.B
+    http://sourceforge.net/projects/sccs/files/
+.LP
+Separate project informations for the
+.B SCCS
+project may be retrieved from:
+.LP
+.B
+    http://sccs.sf.net
+.br

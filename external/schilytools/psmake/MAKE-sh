@@ -1,0 +1,308 @@
+#!/bin/sh
+#ident "@(#)MAKE-sh	1.30 21/06/24 "
+###############################################################################
+#
+# The shell variables CFLAGS & LDFLAGS may be used to pass additional flags
+# to the compile and link process. These additional flags in CFLAGS are not
+# passed to configure if there is CF.
+#
+###############################################################################
+
+forceconfig="no"
+
+while [ x"$1" != x ]; do
+    case $1 in
+	-help)
+	    echo "Usage:	$0 [options]"
+	    echo "Options:"
+	    echo "	-force-config	Force a new 'configure' run"
+	    echo "	-shell path	Force 'path' as shell for a 'configure' run"
+	    echo ""
+	    echo "Environment variables:"
+	    echo "CC=		The C-compiler to use"
+	    echo "CC_OPT=		The Options for the C-compiler (e.g. -O)"
+	    echo "CFLAGS=		Additional C-compiler flags"
+	    echo "LDFLAGS=	Additional Linker flags"
+	    exit
+	    continue;;
+
+	-force-config) forceconfig="yes"
+	    shift
+	    continue;;
+
+	-shell)
+	    shift
+	    if [ $# -lt 1 ]; then
+		echo "Missing argument to -shell"
+		$0 -help
+		exit
+	    fi
+	    CONFIG_SHELL="$1"
+	    shift
+	    continue;;
+
+	*)  echo "$0: Illegal parameter '$1'."
+	    exit 1
+	    continue;;
+    esac
+done
+
+#
+# Check whether the configure script is present. If we are compiling from a
+# clean SCCS tree, this file is missing because configure is a compilation
+# result created by autoconf.
+#
+srcroot=..
+if [ -d ${srcroot}/autoconf ]; then
+	:
+else
+		srcroot=../..
+fi
+if [ ! -r ${srcroot}/autoconf/configure ]; then
+	(cd ${srcroot}/autoconf; sh ./autoconf)
+fi
+if [ ! -d ${srcroot}/RULES/. ]; then
+	(cd ${srcroot}; sh ./MKLINKS)
+fi
+if [ ! -r ${srcroot}/RULES/ldummy.lnk ]; then
+	(cd ${srcroot}/RULES/.; sh ./MKLINKS)
+fi
+
+#
+# Check whether the source files are present. If we are compiling from a
+# clean SCCS tree, these files are missing because they are links to the
+# original source at the original location.
+#
+echo "Checking for source files..."
+if [ ! -r make.c ]; then
+	echo "Source files are not present..."
+
+	#
+	# Check if the current system allows to create symlinks
+	#
+	lnfiles="sh lnfiles"
+	[ ".$BASH" '!=' . ]  && MKLINKS_TEST=test
+	MKLINKS_TEST=${MKLINKS_TEST-:}
+	if [ ".$MKLINKS_COPY" = '.' ]; then
+		rm -f xxzzy.123 xxzzy.345
+		echo test > xxzzy.123
+		ln -s xxzzy.123 xxzzy.345
+		test $? = 0 || lnfiles="sh cpfiles"
+		test -r xxzzy.345 || lnfiles="sh cpfiles"
+		${MKLINKS_TEST} -h xxzzy.345 || lnfiles="sh cpfiles"
+		rm -f xxzzy.123 xxzzy.345
+	else
+		lnfiles="sh cpfiles"
+	fi
+
+	echo "Creating links to source files..."
+	sh rmlinks
+	${lnfiles}
+fi
+
+#
+# Check if the current system allows to create symlinks
+# If not, it seems that all symlinks appear to be plain files of size 0
+#
+echo "Checking for rotten symlinks..."
+if [ ! -s make.c ]; then
+	echo "Copying files because symlinks do not work..."
+	sh rmlinks
+	sh cpfiles
+fi
+
+SYSTEM=unknown
+echo 'testing for uname...'
+uname > /dev/null 2> /dev/null
+if [ $? = 0 ]; then
+	SYSTEM=`uname -s`
+fi
+
+ENV_CC=${CC-none}		# Remember "cc" we got from the environment
+CC=${CC-cc}			# Default to "cc"
+PF=				# Internal CPPFLAGS
+CF=				# Internal CFLAGS
+LF=				# Internal linker flags
+INCLUDE="-Iinclude -I."
+#
+# Defines:
+#
+#	-DSCHILY_BUILD		Use autoconf results from -I.
+#	-DNO_FLOATINGPOINT	Do not include floating point in printf()
+#	-DNO_FPRFORMAT		No printf() speedup for selected architectures
+#	-DNO_NL_ARGS		No %n$ argument reordering in printf()
+#	-DNO_SCANSTACK		Do not try to scan stack for special args
+#	-DNO_USG_STDIO		Do not try to use stdio speedup for USG
+#
+DEFINES="-DSCHILY_BUILD -DNO_FLOATINGPOINT -DNO_FPRFORMAT -DNO_NL_ARGS -DNO_SCANSTACK -DNO_USG_STDIO"
+o=o
+
+if [ "$ENV_CC" = none ]; then
+	echo 'Trying to find GCC'
+
+	gcc -v 2> /dev/null && CC=gcc
+	if [ "$CC" != gcc ]; then
+		echo 'Trying to find Clang'
+
+		clang -v 2> /dev/null && CC=clang
+	fi
+fi
+if [ "$CC" = gcc ]; then
+	GCC_OPT=-O
+	OPT=${CC_OPT-$GCC_OPT}
+elif [ "$CC" = clang ]; then
+	GCC_OPT=-O0		# Clang's optimizer still has bugs
+	OPT=${CC_OPT-$GCC_OPT}
+else
+	OPT=${CC_OPT-}
+	if [ $SYSTEM = HP-UX ]; then
+		CF=-Ae
+	fi
+fi
+if [ "$CC" = cl ]; then
+	o=obj
+fi
+#
+# Set dynamic linking and auto .exe suffix for OS/2
+#
+if [ "$SYSTEM" = OS/2 ]; then
+	LF="-Zexe -Zcrtdll"
+fi
+#
+# Set stack size to 256k on QNX
+#
+if [ "$SYSTEM" = QNX -a "$CC" != gcc ]; then 
+	LF="-N 256k"
+fi 
+#
+# Set -D_GNU_SOURCE on Linux
+#
+if [ "$SYSTEM" = Linux ]; then 
+	DEFINES="$DEFINES -D_GNU_SOURCE"
+fi 
+#
+# Set -D_XOPEN_SOURCE=600 on Z/OS
+#
+if [ "$SYSTEM" = OS/390 ]; then 
+	#
+	# Default to c99 on Z/OS
+	#
+	if [ "$ENV_CC" = none ]; then
+		CC=c99
+	fi
+	PF=-D_XOPEN_SOURCE=600
+fi 
+#
+# VMS does not like -Iinclude, catch "OpenVMS" case also
+#
+case "$SYSTEM" in
+
+*VMS*)
+	#
+	# Default to cc on VMS
+	#
+	if [ "$ENV_CC" = none ]; then
+		CC=cc
+	fi
+	INCLUDE="-I./include -I."
+	DEFINES="$DEFINES -D_USE_STD_STAT -DNO_OPENFD_SRC"
+	if [ ! -r config.cache ]; then
+		: > config.cache
+	fi
+	if [ ! -r xconfig.h ]; then
+		: > xconfig.h
+	fi
+	;;
+esac
+
+echo "SYSTEM:		$SYSTEM"
+echo "CC:		$CC"
+echo "OPT:		$OPT"
+echo "CPPFLAGS:		$PF"
+echo "CFLAGS:		$CF"
+echo "INCLUDE:	$INCLUDE"
+echo "CONFIG_SHELL:	${CONFIG_SHELL-sh}"
+echo
+
+if [ "$forceconfig" = "yes" ]; then
+	echo "Removing old configure run results..."
+	rm -f config.cache xconfig.h
+fi
+if [ -r config.cache ] && [ -r xconfig.h ]; then
+	echo "Using old configure run results..."
+else
+	if [ ."$PF" != . ]; then
+		CPF="$CPPFLAGS $PF"
+	else
+		CPF="$CPPFLAGS"
+	fi
+
+	if [ ."$CF" != . ]; then
+		eval "CC=\"$CC\"" "CPPFLAGS=\"$CPF\"" "CFLAGS=\"$CF\"" CONFIG_NOFAIL=TRUE \
+		  CONFIG_SHELL=${CONFIG_SHELL-sh} ${CONFIG_SHELL-sh} ./configure
+	else
+		eval "CC=\"$CC\"" "CPPFLAGS=\"$CPF\"" CONFIG_NOFAIL=TRUE \
+		  CONFIG_SHELL=${CONFIG_SHELL-sh} ${CONFIG_SHELL-sh} ./configure
+	fi
+fi
+
+#
+# Check whether "configure" worked or whether there is a compiler problem
+#
+if [ ! -r xconfig.h ]; then
+	echo
+	echo "Configure did not create 'xconfig.h'. Check for Compiler problems."
+	echo "Cannot continue..."
+	exit 1
+fi
+
+set -x
+
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES -DSCHILY_PRINT   make.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES -DSCHILY_PRINT   readfile.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES -DSCHILY_PRINT   parse.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES -DSCHILY_PRINT   update.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES -DSCHILY_PRINT   rules.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES -DSCHILY_PRINT   archconf.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES -DSCHILY_PRINT   job.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES -DSCHILY_PRINT   memory.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   astoi.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   astoll.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   comerr.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   eaccess.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   error.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   format.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   getexecpath.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   getnstimeofday.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   jsprintf.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   jssnprintf.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   saveargs.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   seterrno.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   strcatl.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   strlcpy.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   strncpy.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   strnlen.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   streql.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   getargs.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   geterrno.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   movebytes.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   fillbytes.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   ovstrcpy.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   raisecond.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   rename.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   searchinpath.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   uname.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   unsetenv.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   file_raise.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   fileopen.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   fcons.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   cvmod.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   flag.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   flush.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   dat.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   filewrite.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   fileread.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   fileseek.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   niread.c
+$CC $OPT $CPF $CF $CFLAGS -c $INCLUDE $DEFINES   niwrite.c
+$CC $LF $LDFLAGS -o smake make.$o readfile.$o parse.$o update.$o rules.$o archconf.$o job.$o memory.$o  astoi.$o astoll.$o comerr.$o error.$o eaccess.$o format.$o getexecpath.$o getnstimeofday.$o jsprintf.$o jssnprintf.$o saveargs.$o seterrno.$o strcatl.$o strlcpy.$o strncpy.$o strnlen.$o streql.$o getargs.$o geterrno.$o movebytes.$o fillbytes.$o ovstrcpy.$o raisecond.$o rename.$o searchinpath.$o uname.$o unsetenv.$o file_raise.$o fileopen.$o fcons.$o cvmod.$o flag.$o flush.$o dat.$o filewrite.$o fileread.$o fileseek.$o niread.$o niwrite.$o

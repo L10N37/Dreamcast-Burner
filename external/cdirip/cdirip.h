@@ -48,7 +48,7 @@ typedef struct flags_s
 void savetrack(FILE *fsource, image_s *, track_s *, opts_s *, flags_s *);
 void savecuesheet(FILE *fcuesheet, image_s *, track_s *, opts_s *, flags_s *);
 
-void show_counter(unsigned long i, long track_length, unsigned long image_length, long pos);
+void show_counter(long i, long track_length, unsigned long image_length, long pos);
 
 #ifdef _WIN32
 int askfilename(char *string);

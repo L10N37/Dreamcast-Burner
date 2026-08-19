@@ -1,0 +1,461 @@
+. \" @(#)termcap.1	1.15 21/03/23 Copyright 2008-2021 J. Schilling
+. \"  Manual page for termcap
+. \"
+.if t .ds a \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'a
+.if t .ds o \v'-0.55m'\h'0.00n'\z.\h'0.45n'\z.\v'0.55m'\h'-0.45n'o
+.if t .ds u \v'-0.55m'\h'0.00n'\z.\h'0.40n'\z.\v'0.55m'\h'-0.40n'u
+.if t .ds A \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'A
+.if t .ds O \v'-0.77m'\h'0.25n'\z.\h'0.45n'\z.\v'0.77m'\h'-0.70n'O
+.if t .ds U \v'-0.77m'\h'0.30n'\z.\h'0.45n'\z.\v'0.77m'\h'-.75n'U
+.if t .ds s \(*b
+.if t .ds S SS
+.if n .ds a ae
+.if n .ds o oe
+.if n .ds u ue
+.if n .ds s sz
+.TH TERMCAP 1L "2021/03/23" "J\*org Schilling" "Schily\'s USER COMMANDS"
+.SH NAME
+termcap \- a termcap compiler
+.SH SYNOPSIS
+.B
+termcap
+[
+.I options
+]
+.SH DESCRIPTION
+.B termcap
+reads termcap entries and outputs them in unified order and
+with unified escape sequences. This allows to convert termcap
+files into a comparable format.
+.PP
+Since the termcap database is an ASCII representation of the data,
+people may believe that there is no need for a compiler.
+Syntax checks and unification however are a property of compilers.
+The
+.B termcap
+program checks for correct data types, outputs all entries in a unified
+order and recodes all strings with the same escape notation.
+This is needed in to compare two entries and it makes life easier.
+.PP
+When
+.B termcap
+compiles entries, it checks the entries for noncompliances. If any problems
+were found, it inserts comments in the form:
+.sp
+.BI "# NOTICE(" name ")" " some reason
+.sp
+or
+.sp
+.BI "# BAD(" name ")" " some reason
+.sp
+before the related termcap entry.
+These comments should be carefully checked.
+Frequent problems are illegally escaped colons \e: instead of \e072 that in 
+most cases have been created by defective
+.B terminfo
+software.
+
+.SH OPTIONS
+.TP
+.B \-help
+Prints a short summary of the
+.BR termcap (1)
+options and exists.
+.TP
+.B \-version
+Prints the
+.BR termcap (1)
+version number string and exists.
+.TP
+.B \-dooctal
+When printing terminal capabilities, prefer octal output like
+.B \e003
+before escape sequences like
+.BR ^C .
+.TP
+.B \-dumplist
+Dump the complete internal list of terminal capabilities.
+.br
+.ne 5
+.TP
+.B \-e
+Import the termcap description from the
+.B TERMCAP
+environment if present.
+By default,
+.BR termcap (1)
+ignores the
+.B TERMCAP
+environment in case that it does not hold a pathname, but a preparsed 
+termcap entry.
+.br
+.ne 5
+.TP
+.BI if= filename
+Read the file 
+.I filename
+with many termcap entries and produce compiled output in standard order
+on 
+.BR stdout .
+This option is used in order to recompile a whole set of termcap entries.
+.sp
+To make the recompiling as smooth as possible,
+.B \-inorder
+is assumed by default. Use
+.B \-noinorder
+if you like to add further processing by hand.
+.TP
+.B \-inorder
+Output all capabilities in the standard order. First the boolean
+capabilities, then the numeric capabilities and at last the string
+capabilities. Without
+.BR \-inorder ,
+the obsolete capabilities are printed last.
+.sp
+The option
+.B \-inorder
+is assumed by default if the
+.BI if= name
+option has been specified.
+.TP
+.B \-gnugoto
+Allow the GNU tgoto() format extensions %C and %m.
+.TP
+.B \-nodisabled
+Do not output disabled termcap entries. A comment with a warning for this
+entry is still printed in the output.
+.TP
+.B \-noinorder
+Output all capabilities in the standard order, but print
+obsoleted capabilities, unknown capabilities and disabled capabilities
+in a separate block before any
+.B tc=
+entry.
+.TP
+.B \-nounknown
+Do not output unknown termcap entries. A comment with a warning for this
+entry is still printed in the output.
+.TP
+.B \-nowarn
+Do not warn about incorrect entries that could be fixed by assuming that the
+problem is a result from not correctly converting escape sequences in
+.B terminfo 
+syntax to termcap syntax. For this purpose, currently null characters
+.RB ( \e0 )
+are converted to 
+.BR \e200 .
+In addition, the escape sequences
+.BR \ea ,
+.BR \ee ,
+.BR \e: ,
+.BR \e, ,
+.B \es
+and
+.B \el
+are mapped to BEL, ESCAPE, ':', ',', ' ' and LINEFEED.
+.TP
+.B \-oneline
+Output all termcap entries in a single line per entry.
+This helps to scan the whole termcap data base for terminals with specific
+properties.
+.TP
+.B \-s
+Output commands to set and export
+.B TERM
+and
+.BR TERMCAP .
+This can be done with
+.sp
+.B "  eval `tset -s ...`
+.sp
+to bring the terminal information into the environment of shells that
+do not support
+.B termcap 
+internally as e.g.
+.B sh
+(recent Bourne Shell versions) and
+.B bsh
+already do.
+Doing so makes 
+.B termcap 
+based programs start up faster.
+If the
+.B SHELL
+environment variable ends with
+.BR csh ,
+C shell commands are created, otherwise Bourne
+shell commands are created.
+.TP
+.B \-tc
+Follow
+.B tc=
+entries and generate cumulative output.
+Amongst others, this allows to retrieve the cumulative size of the related
+termcap entry.
+.B Termcap
+normally does not interpret
+.B tc=
+entries in order to allow the entries to be reused the same way they are
+in the termcap file.
+.sp
+When the
+.B \-tc
+option is used together with
+.BI if= filename
+and 
+.BR termcap (1)
+is in compile mode, the output will increase noticeably in size as all
+.B termcap
+entries for all terminals will be fully expanded. This also removes all
+hints to similar terminals in the output.
+.TP
+.B \-v
+Increment verbose level.
+By default, 
+.B termcap
+only prints a recoded termcap entry. With increasing verbose level, more 
+information on the termcap entry is printed.
+With a higher verbose level,
+.B termcap
+prints the size of the termcap entry.
+
+.SH ENVIRONMENT
+.TP
+.B HOME
+To find the private files like
+.B ~/.termcap
+.TP
+.B TERM
+The type of terminal for which the output should be formatted.
+.TP
+.B TERMCAP
+This environment variable holds either a precompiled termcap entry
+or the pathname to be used to find a termcap database file.
+If it holds a precompiled entry that does not match the
+.B TERM
+environment, the termcap database is parsed as if the
+.B TERMCAP 
+environment is not set.
+.TP
+.B TERMPATH
+If 
+.B TERMCAP
+is empty, then the
+.B TERMPATH
+environment is scanned for pathnames of files that contain a
+.B termcap
+database.
+It holds a list of filenames separated by colons or spaces (i.e.,  ":" or " ").
+If the TERMPATH symbol is not set, the files
+.I $HOME/.termcap
+and
+.I /etc/termcap
+are scanned in that order.
+
+.SH FILES
+.TP
+.B /etc/termcap
+The system's terminal capabilities database.
+.TP
+.B ~/.termcap
+The private terminal capabilities database.
+This file is checked first, in case that the
+.B TERMPATH
+environment is not defined.
+.SH "SEE ALSO
+.BR sh (1),
+.BR bsh (1),
+.BR tset (1B),
+.BR termcap (4).
+
+.SH MESSAGES
+.PP
+The following messages are created by
+.BR termcap (1):
+.TP
+.B "# BAD(name). Skipping blank entry: 'ent'"
+A colon (":") is followed by white space. White space is only permitted in
+a
+.B termcap
+entry if it appears at the beginning of a line.
+.sp
+This error type is usually caused by a bad manual edit.
+Carefully check every such problem in the source and manually correct it.
+.TP
+.B "# BAD(name). Illegal entry (3rd char 'c' for ':ccc'): 'ent'"
+A valid
+.B termcap
+entry is made of two characters followed by a colon (":")
+in case of a boolean entry, a hash mark ("#") in case of an integer entry,
+an equal sign ("=") for a string entry,
+or the at sign ("@") for disabled entries.
+.sp
+This error type is usually caused by a bad conversion from a
+.B terminfo 
+entry
+that is caused by illegal quoting. A bad quoting may cause the
+.B termcap
+parser to be out of sync. A quoted colon ("\e:") is permitted in 
+.B terminfo
+but not in
+.B termcap
+.RB ( termcap
+only permits "\e072" to include a colon in a string).
+.sp
+This error may also be caused by a bad manual edit, e.g. a backslash
+("\e") at the end of a termcap entry that causes the next terminal name to
+be interpreted as capability, a colon (":") instead of a bar ("|") in the 
+list of alternative terminal names or superfluous colon (":") in the list
+of capabilities.
+.sp
+Carefully check every such problem in the source and manually correct it.
+.TP
+.B "# BAD(name). Type mismatch 'ent' in 'full\-ent' ...
+The type for the current entry does not match the type from the termcap
+documentation.
+.sp
+This error type is usually caused by a bad manual edit, e.g. from typing
+":", "=" or "#" instead of the correct character "=" or "#" that is expected
+as the third character for the entry.
+Carefully check every such problem in the source and manually correct it.
+.TP
+.B "# BAD(name). Bad format '%c' in 'ent=value'"
+An invalid format character was found in a parameterized string (a string
+that is passed to
+.BR tgoto() ).
+.sp
+This error type is usually caused by badly converted 
+.B terminfo
+entry.
+Carefully check every such problem in the source and manually correct it.
+.TP
+.B "# BAD(name). Buffer overflow in 'ent=value'"
+A string that is passed to
+.B tgoto()
+is longer than 80 characters.
+.B tgoto()
+is not granted to work correctly in case that the parameterized string is
+longer than 80 characters.
+.sp
+This error type is usually caused by badly converted 
+.B terminfo
+entry.
+Carefully check every such problem in the source and manually correct it.
+
+.TP
+.B "# NOTICE(name). Short entry (':c:') removed"
+All
+.B termcap
+capability names must have two characters. A single char entry was found and removed.
+.TP
+.B "# NOTICE(name). Disabled entry: '.ent'"
+An entry that starts with a dot (".") was found.
+.sp
+This is usually caused by an intentional manual edit.
+.TP
+.B "# NOTICE(name). Unknown entry ('ent'): 'full\-ent'"
+An entry was found that is not part of the official
+.B termcap
+documentation.
+.sp
+It is unlikely that such an entry is supported by any program, so these
+entries may be removed from the the
+.B termcap
+database.
+This may be done automatically by specifying the
+.B \-nounknown
+option.
+.TP
+.B "# NOTICE(name). Canceled entry 'ent@' followed by 'full\-ent'..."
+A cancelled entry in the form "xx@" was followed by "xx=string" or
+"xx#number" in the same termcap entry.
+The
+.B cancel
+feature in
+.B termcap
+entries is intended to cancel entries from capabilities imported via the
+.BI tc= name
+feature. 
+.sp
+Carefully check every such problem in the source whether it was introduced
+intentionally (e.g. in order to temporarily disable a feature) or whether
+it was introduced by accident.
+.TP
+.B "# NOTICE(name). NULL char (fixed) in entry ('ent') at..."
+A "\e0" string was found in a
+.B termcap
+entry.
+This is not permitted by the
+.B termcap
+documentation.
+.sp
+This error type is usually caused by a bad conversion from a
+.B terminfo
+entry.
+This typically happens if bad software converted a "\eE" string to "\e" or 
+in case that the string "\e0" that is valid in a
+.B terminfo
+entry was not converted to the correct
+.B termcap
+equivalent: "\e200".
+.BR termcap (1)
+assumes the latter and automatically converts "\e0" to "\e200".
+A NULL character may be used as a delay in an output sequence, but it is not expected in
+function key input sequence.
+Carefully check every such problem in the source and manually correct it.
+.TP
+.B "# NOTICE(name). Nonoctal char 'c' in entry ('ent') at position..."
+A character outside the range '0'..'7' was found in a '\ennn' octal sequence.
+.sp
+Carefully check every such problem in the source and manually correct it.
+.TP
+.B "# NOTICE(name). Badly quoted char '\ec' (fixed) in ('ent') at ..."
+A character quoted with "\e" was found but the character is not in the list
+of quotes documented by
+.BR termcap .
+As the character was from the list "\ea", "\ee", "\e:", "\e,", "\es", "\el"
+it is assumed that the problem was caused by a bad conversion from a
+.B terminfo
+entry.
+.sp
+Carefully check every such problem in the source and manually correct it if needed.
+.TP
+.B "# NOTICE(name). Badly quoted char '\ec' in ('ent') at ..."
+A character quoted with "\e" was found but the character is not in the list
+of quotes documented by
+.BR termcap .
+As the character was neither from the list "\ea", "\ee", "\e:", "\e,", "\es", "\el"
+it is assumed that the problem was caused by a bad manual edit.
+.sp
+Carefully check every such problem in the source and manually correct it.
+
+.SH NOTES
+.PP
+Termcap databases that have been created from a terminfo database often are full
+of noncompliances that prevent successful parsing by termcap-compliant software.
+The fact that terminfo permits "\e:" is the cause for the majority of all problems
+but fortunately can be automatically resolved.
+.PP
+There is a non-compliance between older and newer
+.B termcap
+entries. The capability named "ma" in former times (around 1980) was an 
+arrow key map for the
+.BR rogue (1)
+.I "Dungeons of Doom
+game.
+In newer times, the "ma" entry is used for the maximum number of attributes a
+terminal can handle and thus is of type integer.
+.PP
+As the functions
+.BR tgetstr ()
+and
+.BR tgetnum ()
+both skip entries with unappropriate type, this is not a problem.
+For this reason, we do not warn of a possible string/number type conflict 
+with the "ma" capability. It is even possible to have a
+.BI ma= maplist
+and
+.BI ma# num-attr
+entry at the same time for the same terminal entry.
+
+.SH BUGS
