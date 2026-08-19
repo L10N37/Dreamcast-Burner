@@ -4,9 +4,9 @@
 
 Retro Burner is a native Windows optical-disc burning frontend for classic game consoles. The aim is simple: historically, people have needed a collection of different applications, command lines and console-specific guides to burn game discs. **Retro Burner aims to become the one-for-all tool for those workflows** while still exposing enough backend choice and logging to troubleshoot difficult drive/media combinations.
 
-**Current development version: 0.4.0**
+**Current version: 0.4.0**
 
-> **0.4.0 is not released yet.** The public repository is still on 0.3.0. This README describes the 0.4.0 release candidate and clearly labels features that still need physical validation.
+> Retro Burner 0.4.0 is the current release. Some hardware-specific features are still marked as requiring additional physical validation where applicable.
 
 Retro Burner is intended only for images and backups that you are legally entitled to use.
 
@@ -225,12 +225,7 @@ RetroBurner/
 
 Original Retro Burner source code is released under the **MIT License**. That grant applies only to original Retro Burner code and does not relicense third-party source, helper executables, artwork or sounds.
 
-Before 0.4.0 is released, every redistributed third-party component must have:
-
-1. a verified upstream licence/permission basis;
-2. the required copyright/licence notice in the release;
-3. corresponding source where the licence requires it; and
-4. clear attribution in `THIRD_PARTY.md`.
+For redistributed third-party components, the release must include the applicable upstream licence/permission basis, required copyright/licence notices, corresponding source where required, and clear attribution in `THIRD_PARTY.md`.
 
 See `THIRD_PARTY.md` and `licenses/` for the release inventory.
 
